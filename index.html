@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>织鉴 - 农纺产品合规出海智能甄别平台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i class="fas fa-shield-check"></i>
+                <span>织鉴</span>
+            </div>
+            <div class="nav-links">
+                <a href="#" class="nav-link active" data-view="main">首页</a>
+                <a href="#" class="nav-link" data-view="history">典型案例</a>
+                <a href="#" class="nav-link" data-view="stats">关于织鉴</a>
+                <a href="#" class="nav-link" data-view="profile">个人中心</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <main class="main-container">
+        <!-- 主视图：功能介绍 -->
+        <div id="main-view" class="view active">
+            <div class="hero-section">
+                <div class="hero-badge scroll-animate">
+                    <i class="fas fa-robot"></i>
+                    AI驱动 · 文化合规智能审查平台
+                </div>
+                <h1 class="scroll-animate delay-1">
+                    <span class="hero-title-white">AI赋能</span>
+                    <span class="hero-title-gold">文化合规性审查</span>
+                </h1>
+                <p class="hero-subtitle scroll-animate delay-2">乡镇纺织企业产品出口场景下 —— 以东南亚国家为例</p>
+                <p class="hero-description scroll-animate delay-3">
+                    整合东盟各国海关法规、宗教文化禁忌、行业检验标准与历史违规案例，为乡镇纺织企业提供一站式AI驱动的出口产品文化合规性智能审查服务，降低贸易风险，助力企业合规出海。
+                </p>
+                <a href="#" class="hero-cta scroll-animate delay-4" data-view="review">
+                    <i class="fas fa-arrow-right"></i>
+                    立即审查文案
+                </a>
+            </div>
+
+            <!-- 核心功能 -->
+            <div class="features-section-wrapper">
+                <div class="features-header scroll-animate hidden">
+                    <h2>核心功能</h2>
+                    <p>一站式AI驱动的出口产品文化合规性智能审查服务</p>
+                </div>
+                <div class="features-grid scroll-animate hidden">
+                    <div class="feature-card scale-in hidden">
+                    <div class="feature-icon">🔍</div>
+                    <h3>智能合规审查</h3>
+                    <p>基于AI技术，自动识别文案中的文化禁忌、宗教敏感词、政治敏感内容等潜在风险</p>
+                    <div class="feature-tags">
+                        <span class="tag">AI驱动</span>
+                        <span class="tag">实时检测</span>
+                    </div>
+                </div>
+                <div class="feature-card scale-in hidden delay-1">
+                    <div class="feature-icon">&#x1F310;</div>
+                    <h3>多市场支持</h3>
+                    <p>覆盖东南亚10国市场，针对不同国家的文化特点提供定制化审查服务，精准匹配当地法规</p>
+                    <div class="feature-tags">
+                        <span class="tag">10+国家</span>
+                        <span class="tag">本地化</span>
+                    </div>
+                </div>
+                <div class="feature-card scale-in hidden delay-2">
+                    <div class="feature-icon">✨</div>
+                    <h3>智能优化建议</h3>
+                    <p>不仅发现问题，更提供专业的修改建议和优化方案，帮助您的产品顺利出海</p>
+                    <div class="feature-tags">
+                        <span class="tag">智能推荐</span>
+                        <span class="tag">一键优化</span>
+                    </div>
+                </div>
+                
+                <div class="feature-card scale-in hidden delay-4">
+                    <div class="feature-icon">&#x1F4CB;</div>
+                    <h3>审查历史记录</h3>
+                    <p>自动保存审查历史，方便追踪和管理所有审查记录，支持导出和分享</p>
+                    <div class="feature-tags">
+                        <span class="tag">历史追踪</span>
+                        <span class="tag">数据导出</span>
+                    </div>
+                </div>
+                <div class="feature-card scale-in hidden delay-5">
+                    <div class="feature-icon">⚡</div>
+                    <h3>批量审查</h3>
+                    <p>支持批量上传和审查多个文案，提高工作效率，适合大规模产品上架</p>
+                    <div class="feature-tags">
+                        <span class="tag">批量处理</span>
+                        <span class="tag">高效审查</span>
+                    </div>
+                </div>
+                <div class="feature-card scale-in hidden delay-6">
+                    <div class="feature-icon">&#x1F6A8;</div>
+                    <h3>合规预警</h3>
+                    <p>实时监控目标市场法规变化，及时推送合规风险预警，保障业务安全</p>
+                    <div class="feature-tags">
+                        <span class="tag">风险预警</span>
+                        <span class="tag">实时通知</span>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+            <!-- 核心优势 -->
+            <div class="benefits-section">
+                <div class="benefits-content slide-in-left hidden">
+                    <h2>为什么选择织鉴？</h2>
+                    <p class="benefits-subtitle">专为乡镇纺织企业打造的一站式合规出海解决方案</p>
+                    <ul>
+                        <li class="scroll-animate hidden">
+                            <span class="benefit-number">01</span>
+                            <div>
+                                <h4>专业领域深耕</h4>
+                                <p>专注农纺产品出海场景，深度理解行业特性和合规需求，累计服务超过5000家企业</p>
+                            </div>
+                        </li>
+                        <li class="scroll-animate hidden delay-1">
+                            <span class="benefit-number">02</span>
+                            <div>
+                                <h4>文化敏感度高</h4>
+                                <p>深入研究东南亚各国文化习俗、宗教信仰、政治环境，精准识别潜在风险点</p>
+                            </div>
+                        </li>
+                        <li class="scroll-animate hidden delay-2">
+                            <span class="benefit-number">03</span>
+                            <div>
+                                <h4>实时更新规则</h4>
+                                <p>持续跟踪各国政策法规变化，每周更新风险库，确保审查标准与时俱进</p>
+                            </div>
+                        </li>
+                        <li class="scroll-animate hidden delay-3">
+                            <span class="benefit-number">04</span>
+                            <div>
+                                <h4>智能优化建议</h4>
+                                <p>不仅发现问题，更提供专业的修改建议和替代方案，降低整改成本</p>
+                            </div>
+                        </li>
+                        <li class="scroll-animate hidden delay-4">
+                            <span class="benefit-number">05</span>
+                            <div>
+                                <h4>多语言支持</h4>
+                                <p>支持中文、英文、泰语、印尼语等多语言文案审查，覆盖主要目标市场</p>
+                            </div>
+                        </li>
+                        <li class="scroll-animate hidden delay-5">
+                            <span class="benefit-number">06</span>
+                            <div>
+                                <h4>数据安全保障</h4>
+                                <p>采用企业级数据加密存储，确保您的产品信息和审查记录安全无忧</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+                <div class="benefits-visual slide-in-right hidden">
+                    <div class="visual-card scale-in hidden">
+                        <div class="visual-icon">📊</div>
+                        <div class="visual-stats">
+                            <span class="stat-value">10+</span>
+                            <span class="stat-label">覆盖国家</span>
+                        </div>
+                    </div>
+                    <div class="visual-card scale-in hidden delay-1">
+                        <div class="visual-icon">✅</div>
+                        <div class="visual-stats">
+                            <span class="stat-value">99%</span>
+                            <span class="stat-label">风险识别率</span>
+                        </div>
+                    </div>
+                    <div class="visual-card scale-in hidden delay-2">
+                        <div class="visual-icon">⚡</div>
+                        <div class="visual-stats">
+                            <span class="stat-value">3秒</span>
+                            <span class="stat-label">平均响应</span>
+                        </div>
+                    </div>
+                    <div class="visual-card scale-in hidden delay-3">
+                        <div class="visual-icon">📚</div>
+                        <div class="visual-stats">
+                            <span class="stat-value">100+</span>
+                            <span class="stat-label">规则库条目</span>
+                        </div>
+                    </div>
+                    <div class="visual-card scale-in hidden delay-4">
+                        <div class="visual-icon">📝</div>
+                        <div class="visual-stats">
+                            <span class="stat-value">200+</span>
+                            <span class="stat-label">审查文案</span>
+                        </div>
+                    </div>
+                    <div class="visual-card scale-in hidden delay-5">
+                        <div class="visual-icon">🎯</div>
+                        <div class="visual-stats">
+                            <span class="stat-value">95%</span>
+                            <span class="stat-label">合规平均通过率</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 文案审查视图 -->
+        <div id="review-view" class="view">
+            <div class="review-header">
+                <a href="#" class="back-to-home" data-view="main">
+                    <i class="fas fa-home"></i>
+                    返回首页
+                </a>
+            </div>
+            <div class="section-header">
+                <h2><i class="fas fa-file-check"></i> 文案合规审查</h2>
+                <p>输入您的产品文案，AI将自动识别潜在风险并提供优化建议</p>
+            </div>
+
+            <div class="content-wrapper">
+                <!-- 输入区域 -->
+                <div class="input-section">
+                    <!-- 目标市场选择 -->
+                    <div class="market-selector">
+                        <label for="country-select">
+                            <i class="fas fa-globe-asia"></i>
+                            选择目标市场
+                        </label>
+                        <select id="country-select" class="country-select">
+                            <option value="">请选择出口国家/地区</option>
+                            <option value="indonesia">印度尼西亚</option>
+                            <option value="thailand">泰国</option>
+                            <option value="vietnam">越南</option>
+                            <option value="malaysia">马来西亚</option>
+                            <option value="philippines">菲律宾</option>
+                            <option value="singapore">新加坡</option>
+                            <option value="myanmar">缅甸</option>
+                            <option value="cambodia">柬埔寨</option>
+                            <option value="laos">老挝</option>
+                            <option value="brunei">文莱</option>
+                        </select>
+                    </div>
+
+                    <!-- 文案输入 -->
+                    <div class="input-area-container">
+                        <label for="text-input">
+                            <i class="fas fa-edit"></i>
+                            输入待审查文案
+                        </label>
+                        <textarea 
+                            id="text-input" 
+                            class="text-input" 
+                            placeholder="请在此粘贴或输入您的文案，例如：产品标题、描述、标签等..."
+                            rows="8"
+                        ></textarea>
+                        <div class="input-footer">
+                            <span class="char-count"><span id="char-count">0</span> 字符</span>
+                            <button id="clear-btn" class="btn-secondary">
+                                <i class="fas fa-eraser"></i> 清空
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 一键审查按钮 -->
+                    <div class="button-group">
+                        <button id="analyze-btn" class="btn-primary btn-large">
+                            <i class="fas fa-magic"></i>
+                            <span>一键智能审查</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 审查报告视图 -->
+        <div id="result-view" class="view">
+            <div class="section-header">
+                <h2><i class="fas fa-clipboard-check"></i> 审查报告</h2>
+                <div class="risk-summary" id="risk-summary"></div>
+            </div>
+
+            <!-- 原文对比区域 -->
+            <div class="comparison-section">
+                <div class="comparison-column">
+                    <h3><i class="fas fa-file-alt"></i> 原文</h3>
+                    <div id="original-text" class="text-display"></div>
+                </div>
+                <div class="comparison-column">
+                    <h3><i class="fas fa-magic"></i> 优化后</h3>
+                    <div id="optimized-text" class="text-display"></div>
+                </div>
+            </div>
+
+            <!-- 详细问题报告 -->
+            <div class="issues-section" id="issues-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> 问题详情</h3>
+                <div id="issues-list" class="issues-list"></div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="result-actions">
+                <button id="copy-btn" class="btn-success">
+                    <i class="fas fa-copy"></i> 一键复制优化文案
+                </button>
+                <button id="back-btn" class="btn-secondary">
+                    <i class="fas fa-arrow-left"></i> 返回审查
+                </button>
+            </div>
+        </div>
+
+        <!-- 历史记录/案例库视图 -->
+        <div id="history-view" class="view">
+            <div class="section-header">
+                <h2><i class="fas fa-history"></i> 典型案例库</h2>
+                <p>以下是我们整理的真实审查案例（已脱敏），展示工具的实际应用效果</p>
+            </div>
+            <div id="cases-container" class="cases-container"></div>
+        </div>
+
+        <!-- 关于织鉴视图 -->
+        <div id="stats-view" class="view">
+            <div class="section-header">
+                <h2><i class="fas fa-info-circle"></i> 关于织鉴</h2>
+                <p>了解织鉴平台</p>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-checks">0</div>
+                    <div class="stat-label">累计审查文案</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="issues-found">0</div>
+                    <div class="stat-label">发现问题总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="high-risk-count">0</div>
+                    <div class="stat-label">高危问题</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="avg-fixes">0</div>
+                    <div class="stat-label">平均每个文案问题数</div>
+                </div>
+            </div>
+            <div class="charts-container">
+                <div class="chart-card">
+                    <h3>按国家审查分布</h3>
+                    <canvas id="country-chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>问题类型分布</h3>
+                    <canvas id="type-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 个人中心视图 -->
+        <div id="profile-view" class="view">
+            <div class="section-header">
+                <h2><i class="fas fa-user"></i> 个人中心</h2>
+                <p>管理您的账户和审查记录</p>
+            </div>
+
+            <div class="profile-container">
+                <!-- 用户信息卡片 -->
+                <div class="profile-card">
+                    <div class="profile-header">
+                        <div class="avatar">
+                            <i class="fas fa-user-circle"></i>
+                        </div>
+                        <div class="user-info">
+                            <h3>用户61123409904</h3>
+                            <p>zhijian@163.com</p>
+                            <span class="member-badge">高级会员</span>
+                        </div>
+                    </div>
+                    <div class="profile-stats">
+                        <div class="stat-item">
+                            <span class="stat-value">28</span>
+                            <span class="stat-label">累计审查</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">67</span>
+                            <span class="stat-label">发现问题</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">98%</span>
+                            <span class="stat-label">合规通过率提升</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 审查记录 -->
+                <div class="profile-section">
+                    <div class="section-header-row">
+                        <h3><i class="fas fa-history"></i> 最近审查记录</h3>
+                        <span class="history-count">共 <span id="history-count">6</span> 条记录</span>
+                    </div>
+                    
+                    <!-- 历史会话列表 -->
+                    <div class="review-history" id="review-history">
+                        <!-- 动态渲染历史会话 -->
+                    </div>
+                    
+                    <!-- 加载更多 -->
+                    <div class="load-more-container" id="load-more-container" style="display: none;">
+                        <button id="load-more-btn" class="btn-secondary btn-block">
+                            <i class="fas fa-chevron-down"></i> 加载更多记录
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 账户设置 -->
+                <div class="profile-section">
+                    <h3><i class="fas fa-cog"></i> 账户设置</h3>
+                    <div class="settings-list">
+                        <div class="setting-item">
+                            <i class="fas fa-user-edit"></i>
+                            <span>修改个人信息</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                        <div class="setting-item">
+                            <i class="fas fa-lock"></i>
+                            <span>修改密码</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                        <div class="setting-item">
+                            <i class="fas fa-bell"></i>
+                            <span>通知设置</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                        <div class="setting-item">
+                            <i class="fas fa-language"></i>
+                            <span>语言设置</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>织鉴 · 农纺产品合规出海智能甄别平台</p>
+    </footer>
+
+    <!-- 提示消息 -->
+    <div id="toast" class="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
