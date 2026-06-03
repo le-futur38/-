@@ -88,27 +88,52 @@ app.post('/api/analyze', async (req, res) => {
 
 请直接返回JSON，不要有其他内容。`;
 
-        const response = await fetch(`${process.env.DIFY_API_URL}/chat-messages`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
-            },
-            body: JSON.stringify({
-                query: `请审查以下出口到${countryName}市场的文案：\n\n${text}\n\n只需返回JSON格式的审查结果。`,
-                user: 'web-user',
-                response_mode: 'blocking',
-                conversation_id: '',
-                inputs: {},
-                files: []
-            })
-        });
+        // 添加超时控制（30秒）
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+
+        let response;
+        try {
+            console.log('正在调用Dify API:', `${process.env.DIFY_API_URL}/chat-messages`);
+            response = await fetch(`${process.env.DIFY_API_URL}/chat-messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
+                },
+                body: JSON.stringify({
+                    query: `请审查以下出口到${countryName}市场的文案：\n\n${text}\n\n只需返回JSON格式的审查结果。`,
+                    user: 'web-user',
+                    response_mode: 'blocking',
+                    conversation_id: '',
+                    inputs: {},
+                    files: []
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeout);
+            console.log('Dify响应状态:', response.status);
+        } catch (fetchError) {
+            clearTimeout(timeout);
+            if (fetchError.name === 'AbortError') {
+                console.error('Dify API请求超时（30秒）');
+                return res.status(504).json({
+                    success: false,
+                    error: 'AI审查服务响应超时，请稍后重试'
+                });
+            }
+            console.error('Dify API请求失败:', fetchError.message);
+            throw fetchError;
+        }
 
         if (!response.ok) {
-            throw new Error(`Dify API error: ${response.status}`);
+            const errorText = await response.text();
+            console.error('Dify API错误响应:', response.status, errorText);
+            throw new Error(`Dify API error: ${response.status} - ${errorText}`);
         }
 
         const data = await response.json();
+        console.log('Dify返回数据 keys:', Object.keys(data));
         
         // 解析AI返回的内容
         let result;
