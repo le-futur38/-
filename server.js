@@ -88,92 +88,85 @@ app.post('/api/analyze', async (req, res) => {
 
 请直接返回JSON，不要有其他内容。`;
 
-        // 添加超时控制（30秒）
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-
-        let response;
-        try {
-            console.log('正在调用Dify API:', `${process.env.DIFY_API_URL}/chat-messages`);
-            response = await fetch(`${process.env.DIFY_API_URL}/chat-messages`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
-                },
-                body: JSON.stringify({
-                    query: `请审查以下出口到${countryName}市场的文案：\n\n${text}\n\n只需返回JSON格式的审查结果。`,
-                    user: 'web-user',
-                    response_mode: 'blocking',
-                    conversation_id: '',
-                    inputs: {},
-                    files: []
-                }),
-                signal: controller.signal
-            });
-            clearTimeout(timeout);
-            console.log('Dify响应状态:', response.status);
-        } catch (fetchError) {
-            clearTimeout(timeout);
-            if (fetchError.name === 'AbortError') {
-                console.error('Dify API请求超时（30秒）');
-                return res.status(504).json({
-                    success: false,
-                    error: 'AI审查服务响应超时，请稍后重试'
-                });
-            }
-            console.error('Dify API请求失败:', fetchError.message);
-            throw fetchError;
-        }
+        const response = await fetch(`${process.env.DIFY_API_URL}/chat-messages`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
+            },
+            body: JSON.stringify({
+                query: `请审查以下出口到${countryName}市场的文案：\n\n${text}\n\n只需返回JSON格式的审查结果。`,
+                user: 'web-user',
+                response_mode: 'blocking',
+                conversation_id: '',
+                inputs: {},
+                files: []
+            })
+        });
 
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Dify API错误响应:', response.status, errorText);
-            throw new Error(`Dify API error: ${response.status} - ${errorText}`);
+            const errText = await response.text();
+            console.error('Dify API error response:', errText);
+            throw new Error(`Dify API error: ${response.status} - ${errText}`);
         }
 
         const data = await response.json();
-        console.log('Dify返回数据 keys:', Object.keys(data));
-        
+        console.log('=== Dify响应 ===');
+        console.log('完整数据:', JSON.stringify(data).substring(0, 2000));
+        console.log('answer字段长度:', data.answer ? data.answer.length : 0);
+        console.log('answer内容预览:', data.answer ? data.answer.substring(0, 500) : '空');
+        console.log('conversation_id:', data.conversation_id);
+        console.log('message_id:', data.message_id);
+
         // 解析AI返回的内容
         let result;
         try {
             // 尝试从返回内容中提取JSON
             let content = data.answer || '';
+            console.log('清理前内容长度:', content.length);
             
             // 清理markdown代码块
             content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            console.log('清理后内容长度:', content.length);
+            console.log('清理后内容预览:', content.substring(0, 500));
             
             // 尝试解析JSON
             result = JSON.parse(content);
             result.success = true;
+            console.log('JSON解析成功，issues数量:', result.issues ? result.issues.length : 0);
         } catch (parseError) {
+            console.error('JSON解析失败:', parseError.message);
             // 如果解析失败，尝试其他方式
             const match = data.answer?.match(/\{[\s\S]*\}/);
             if (match) {
                 try {
                     result = JSON.parse(match[0]);
                     result.success = true;
+                    console.log('正则提取后JSON解析成功');
                 } catch (e) {
+                    console.error('正则提取后仍解析失败:', e.message);
                     result = {
-                        success: false,
+                        success: true,
                         originalText: text,
-                        optimizedText: text,
+                        optimizedText: data.answer || text,
                         issues: [],
-                        error: 'AI返回格式解析失败'
+                        warning: 'AI返回格式解析失败，已返回原始内容'
                     };
                 }
             } else {
+                console.log('未找到JSON格式，直接返回AI回答');
                 result = {
-                    success: false,
+                    success: true,
                     originalText: text,
-                    optimizedText: text,
-                    issues: [],
-                    error: '无法解析AI返回内容'
+                    optimizedText: data.answer || text,
+                    issues: []
                 };
             }
         }
 
+        console.log('=== 最终返回结果 ===');
+        console.log('success:', result.success);
+        console.log('issues数量:', result.issues ? result.issues.length : 0);
         res.json(result);
     } catch (error) {
         console.error('API Error:', error);
