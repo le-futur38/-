@@ -131,17 +131,21 @@ app.post('/api/analyze', async (req, res) => {
             console.log('清理后内容预览:', content.substring(0, 500));
             
             // 尝试解析JSON
-            result = JSON.parse(content);
-            result.success = true;
-            console.log('JSON解析成功，issues数量:', result.issues ? result.issues.length : 0);
+            let parsed = JSON.parse(content);
+            console.log('JSON解析成功，原始字段:', Object.keys(parsed));
+            
+            // 适配Dify实际返回的格式，转换为前端期望的格式
+            result = convertDifyResponse(parsed, text);
+            console.log('转换后字段:', Object.keys(result));
+            console.log('issues数量:', result.issues ? result.issues.length : 0);
         } catch (parseError) {
             console.error('JSON解析失败:', parseError.message);
             // 如果解析失败，尝试其他方式
             const match = data.answer?.match(/\{[\s\S]*\}/);
             if (match) {
                 try {
-                    result = JSON.parse(match[0]);
-                    result.success = true;
+                    let parsed = JSON.parse(match[0]);
+                    result = convertDifyResponse(parsed, text);
                     console.log('正则提取后JSON解析成功');
                 } catch (e) {
                     console.error('正则提取后仍解析失败:', e.message);
@@ -177,6 +181,70 @@ app.post('/api/analyze', async (req, res) => {
         });
     }
 });
+
+// 将Dify返回的JSON转换为前端期望的格式
+function convertDifyResponse(parsed, originalText) {
+    // 如果已经是前端期望的格式（有issues数组且是数组）
+    if (parsed.issues && Array.isArray(parsed.issues)) {
+        return {
+            success: true,
+            originalText: parsed.originalText || originalText,
+            optimizedText: parsed.optimizedText || parsed.corrected_text || originalText,
+            issues: parsed.issues,
+            isCompliant: parsed.is_compliant,
+            inputLanguage: parsed.input_language
+        };
+    }
+    
+    // Dify实际返回的格式适配
+    const issues = [];
+    if (parsed.issues_in_chinese && !parsed.is_compliant) {
+        // 将issues_in_chinese字符串拆分为问题数组
+        const issueText = parsed.issues_in_chinese;
+        const issueMatches = issueText.match(/\d+\.\s*[^0-9]+?(?=\d+\.|$)/g);
+        
+        if (issueMatches) {
+            issueMatches.forEach((issueStr) => {
+                const cleanStr = issueStr.trim().replace(/^\d+\.\s*/, '');
+                issues.push({
+                    type: '文化合规',
+                    matchedWord: extractMatchedWord(cleanStr),
+                    riskLevel: 'high',
+                    description: cleanStr,
+                    suggestion: '请根据描述修改相关文案',
+                    position: -1
+                });
+            });
+        } else {
+            issues.push({
+                type: '文化合规',
+                matchedWord: '',
+                riskLevel: 'high',
+                description: issueText,
+                suggestion: '请根据描述修改相关文案',
+                position: -1
+            });
+        }
+    }
+    
+    return {
+        success: true,
+        originalText: originalText,
+        optimizedText: parsed.corrected_text || originalText,
+        issues: issues,
+        isCompliant: parsed.is_compliant,
+        inputLanguage: parsed.input_language
+    };
+}
+
+// 从问题描述中提取匹配词（引号或括号内的内容）
+function extractMatchedWord(description) {
+    const match = description.match(/['"""]([^'""""]+)['""""]/);
+    if (match) return match[1];
+    const parenMatch = description.match(/[（(]([^）)]+)[）)]/);
+    if (parenMatch) return parenMatch[1];
+    return '';
+}
 
 // 提供静态文件
 app.use(express.static(path.join(__dirname)));
