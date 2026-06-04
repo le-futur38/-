@@ -796,9 +796,6 @@ function renderHistoryRecords() {
                 <p class="history-text">${record.text}</p>
                 <p class="history-meta">${record.countryName} · ${issueText}</p>
             </div>
-            <div class="history-action">
-                <i class="fas fa-eye"></i> 查看报告
-            </div>
         `;
         
         container.appendChild(item);
