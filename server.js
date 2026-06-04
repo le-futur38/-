@@ -237,12 +237,24 @@ function convertDifyResponse(parsed, originalText) {
     };
 }
 
-// 从问题描述中提取匹配词（引号或括号内的内容）
+// 从问题描述中提取匹配词（优先提取括号内的原文，其次是引号内容）
 function extractMatchedWord(description) {
-    const match = description.match(/['"""]([^'""""]+)['""""]/);
-    if (match) return match[1];
+    // 优先提取括号内的原文（如中文描述中的"可爱的猪图案(ลวดลายหมูน่ารัก)"应提取泰文部分）
     const parenMatch = description.match(/[（(]([^）)]+)[）)]/);
-    if (parenMatch) return parenMatch[1];
+    if (parenMatch) {
+        const parenContent = parenMatch[1].trim();
+        // 如果括号内是非中文（即原文），优先返回
+        if (/[^\u4e00-\u9fa5]/.test(parenContent) && parenContent.length > 1) {
+            return parenContent;
+        }
+        // 如果括号内是中文，尝试引号
+        const quoteMatch = description.match(/['"""]([^'""""]+)['""""]/);
+        if (quoteMatch) return quoteMatch[1];
+        return parenContent;
+    }
+    // 退而求其次提取引号内容
+    const quoteMatch = description.match(/['"""]([^'""""]+)['""""]/);
+    if (quoteMatch) return quoteMatch[1];
     return '';
 }
 
