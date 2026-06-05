@@ -135,7 +135,7 @@ app.post('/api/analyze', async (req, res) => {
                 conversation_id: '',
                 inputs: {
                     country: countryName,
-                    product_type: textileType,
+                    types: textileType,
                     input_text: text
                 },
                 files: []
