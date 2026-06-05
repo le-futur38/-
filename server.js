@@ -134,7 +134,7 @@ app.post('/api/analyze', async (req, res) => {
                 response_mode: 'blocking',
                 conversation_id: '',
                 inputs: {
-                    target_country: countryName,
+                    country: countryName,
                     product_type: textileType,
                     input_text: text
                 },
