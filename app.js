@@ -434,7 +434,29 @@ function analyzeText() {
     // 显示处理中提示
     showToast('正在分析文案... AI正在检查语法、文化禁忌和合规性问题...');
     
-    // 调用Railway后端API
+    // 启动进度提示（让用户知道仍在等待）
+    let progressTimer = null;
+    let progressSeconds = 0;
+    progressTimer = setInterval(() => {
+        progressSeconds += 10;
+        if (progressSeconds === 30) {
+            showToast('AI分析中... 复杂合规审查可能需要1-2分钟，请耐心等待');
+        } else if (progressSeconds === 60) {
+            showToast('AI分析中... 仍在处理中');
+        } else if (progressSeconds === 90) {
+            showToast('AI分析中... 快完成了');
+        } else if (progressSeconds % 30 === 0) {
+            showToast(`AI分析中... 已等待${progressSeconds}秒`);
+        }
+    }, 10000);
+    
+    // 调用Railway后端API（带超时控制）
+    const fetchController = new AbortController();
+    const fetchTimeoutId = setTimeout(() => {
+        fetchController.abort();
+        console.error('前端fetch超时（3分钟）');
+    }, 180000); // 3分钟超时
+    
     fetch('https://airy-respect-production.up.railway.app/api/analyze', {
         method: 'POST',
         headers: {
@@ -444,10 +466,21 @@ function analyzeText() {
             text: text,
             country: selectedCountry,
             productType: selectedTextile
-        })
+        }),
+        signal: fetchController.signal
     })
-    .then(response => response.json())
+    .then(response => {
+        clearTimeout(fetchTimeoutId);
+        clearInterval(progressTimer);
+        console.log('收到响应，状态:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`服务器返回 ${response.status} 错误`);
+        }
+        return response.json();
+    })
     .then(result => {
+        console.log('解析结果成功:', result);
         // 保存到全局状态
         currentState.originalText = result.originalText || text;
         currentState.optimizedText = result.optimizedText || result.corrected_text || text;
@@ -488,13 +521,19 @@ function analyzeText() {
         }
     })
     .catch(error => {
+        clearTimeout(fetchTimeoutId);
+        clearInterval(progressTimer);
         console.error('API调用失败:', error);
         
         // 区分不同的错误类型
         let errorMsg = 'AI审查服务暂时不可用，请稍后重试';
         
-        if (error.message && error.message.includes('Failed to fetch')) {
+        if (error.name === 'AbortError') {
+            errorMsg = '请求超时（3分钟），AI分析时间过长，请重试';
+        } else if (error.message && error.message.includes('Failed to fetch')) {
             errorMsg = '网络连接失败，请检查网络后重试';
+        } else if (error.message) {
+            errorMsg = `审查失败：${error.message}`;
         }
         
         showToast(errorMsg);
