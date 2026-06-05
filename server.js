@@ -7,6 +7,20 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// 健康检查端点
+app.get('/api/health', (req, res) => {
+    res.json({
+        success: true,
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        env: {
+            DIFY_API_URL: process.env.DIFY_API_URL || '未设置',
+            DIFY_API_KEY_EXISTS: !!process.env.DIFY_API_KEY
+        }
+    });
+});
+
 // 调试日志中间件
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -295,19 +309,24 @@ function parseDifyAnswer(answer) {
 
 // API代理端点
 app.post('/api/analyze', async (req, res) => {
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const startTime = Date.now();
+    
     try {
-        console.log('=== /api/analyze 收到请求 ===');
+        console.log(`\n=== [${requestId}] /api/analyze 收到请求 ===`);
+        console.log(`[${requestId}] 时间:`, new Date().toISOString());
         const { text, country, productType } = req.body;
-        console.log('text:', text);
-        console.log('country:', country);
-        console.log('productType:', productType);
-        console.log('DIFY_API_URL:', process.env.DIFY_API_URL);
-        console.log('DIFY_API_KEY exists:', !!process.env.DIFY_API_KEY);
+        console.log(`[${requestId}] text长度:`, text?.length || 0);
+        console.log(`[${requestId}] country:`, country);
+        console.log(`[${requestId}] productType:`, productType);
+        console.log(`[${requestId}] DIFY_API_URL:`, process.env.DIFY_API_URL);
+        console.log(`[${requestId}] DIFY_API_KEY exists:`, !!process.env.DIFY_API_KEY);
         
         if (!text || !country) {
             return res.status(400).json({ 
                 success: false, 
-                error: '缺少必要参数：text 或 country' 
+                error: '缺少必要参数：text 或 country',
+                requestId
             });
         }
 
@@ -444,17 +463,23 @@ app.post('/api/analyze', async (req, res) => {
             };
         }
 
-        console.log('=== 最终返回结果 ===');
-        console.log('success:', result.success);
-        console.log('issues数量:', result.issues ? result.issues.length : 0);
+        console.log(`[${requestId}] === 最终返回结果 ===`);
+        console.log(`[${requestId}] success:`, result.success);
+        console.log(`[${requestId}] issues数量:`, result.issues ? result.issues.length : 0);
         // 关键：附加 Dify 的 conversation_id 和 message_id，用于历史报告还原
         result.conversation_id = data.conversation_id || '';
         result.message_id = data.message_id || '';
-        console.log('返回 conversation_id:', result.conversation_id);
-        console.log('返回 message_id:', result.message_id);
+        result.requestId = requestId;
+        console.log(`[${requestId}] 返回 conversation_id:`, result.conversation_id);
+        console.log(`[${requestId}] 返回 message_id:`, result.message_id);
+        const duration = Date.now() - startTime;
+        console.log(`[${requestId}] === /api/analyze 成功返回 === 总耗时: ${duration}ms`);
         res.json(result);
     } catch (error) {
-        console.error('API Error:', error);
+        const duration = Date.now() - startTime;
+        console.error(`[${requestId}] === /api/analyze 异常 === 耗时: ${duration}ms`);
+        console.error(`[${requestId}] API Error:`, error);
+        console.error(`[${requestId}] Error stack:`, error.stack);
         
         // 判断是否是Dify服务不可用
         const isDifyDown = error.message && (
@@ -474,7 +499,8 @@ app.post('/api/analyze', async (req, res) => {
             success: false,
             error: userMessage,
             message: error.message,
-            retryable: isDifyDown
+            requestId,
+            difyDown: isDifyDown
         });
     }
 });

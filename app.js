@@ -470,12 +470,22 @@ function analyzeText() {
         console.log('收到响应，状态:', response.status);
         
         if (!response.ok) {
+            // 502/503/504 通常是上游服务（Railway/Dify）问题，不是我们的代码问题
+            if (response.status === 502) {
+                throw new Error('502 网关错误 - Railway/Cloudflare 上游连接异常，请稍后重试');
+            } else if (response.status === 503) {
+                throw new Error('AI服务暂时不可用（Dify官方异常），请稍后重试');
+            } else if (response.status === 504) {
+                throw new Error('504 网关超时 - AI分析耗时过长，请稍后重试');
+            }
             throw new Error(`服务器返回 ${response.status} 错误`);
         }
         return response.json();
     })
     .then(result => {
-        console.log('解析结果成功:', result);
+        if (result.requestId) {
+            console.log('请求ID:', result.requestId);
+        }
         // 保存到全局状态
         currentState.originalText = result.originalText || text;
         currentState.optimizedText = result.optimizedText || result.corrected_text || text;
