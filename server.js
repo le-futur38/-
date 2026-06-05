@@ -423,6 +423,11 @@ app.post('/api/analyze', async (req, res) => {
         console.log('=== 最终返回结果 ===');
         console.log('success:', result.success);
         console.log('issues数量:', result.issues ? result.issues.length : 0);
+        // 关键：附加 Dify 的 conversation_id 和 message_id，用于历史报告还原
+        result.conversation_id = data.conversation_id || '';
+        result.message_id = data.message_id || '';
+        console.log('返回 conversation_id:', result.conversation_id);
+        console.log('返回 message_id:', result.message_id);
         res.json(result);
     } catch (error) {
         console.error('API Error:', error);
