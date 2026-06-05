@@ -13,6 +13,7 @@ const elements = {
     textInput: document.getElementById('text-input'),
     charCount: document.getElementById('char-count'),
     countrySelect: document.getElementById('country-select'),
+    textileSelect: document.getElementById('textile-select'),
     analyzeBtn: document.getElementById('analyze-btn'),
     clearBtn: document.getElementById('clear-btn'),
     originalText: document.getElementById('original-text'),
@@ -54,6 +55,11 @@ function clearReviewForm() {
     // 重置目标市场选择
     if (elements.countrySelect) {
         elements.countrySelect.value = '';
+    }
+    
+    // 重置纺织品种类选择
+    if (elements.textileSelect) {
+        elements.textileSelect.value = '';
     }
     
     console.log('文案输入表单已清空');
@@ -404,9 +410,15 @@ function isMatchFixedDemo(text) {
 function analyzeText() {
     const text = elements.textInput.value.trim();
     const selectedCountry = elements.countrySelect.value;
+    const selectedTextile = elements.textileSelect ? elements.textileSelect.value : '';
     
     if (!selectedCountry) {
         showToast('请先选择目标市场');
+        return;
+    }
+    
+    if (!selectedTextile) {
+        showToast('请先选择纺织品种类');
         return;
     }
     
@@ -430,21 +442,35 @@ function analyzeText() {
         },
         body: JSON.stringify({
             text: text,
-            country: selectedCountry
+            country: selectedCountry,
+            productType: selectedTextile
         })
     })
     .then(response => response.json())
     .then(result => {
         // 保存到全局状态
         currentState.originalText = result.originalText || text;
-        currentState.optimizedText = result.optimizedText || text;
+        currentState.optimizedText = result.optimizedText || result.corrected_text || text;
         currentState.issues = result.issues || [];
+        // 保留Dify返回的额外字段
+        currentState.extra = {
+            target_country: result.target_country,
+            product_type: result.product_type,
+            input_language: result.input_language,
+            rewrite_language: result.rewrite_language,
+            overall_risk_level: result.overall_risk_level,
+            is_recommended_for_listing: result.is_recommended_for_listing,
+            summary: result.summary,
+            source_units: result.source_units,
+            optimized_full_text: result.optimized_full_text || result.corrected_text,
+            notes: result.notes
+        };
         
         // 保存到历史记录
-        saveToHistory(text, selectedCountry, currentState.issues);
+        saveToHistory(text, selectedCountry, currentState.issues, selectedTextile);
         
         // 显示结果
-        displayResult(currentState.originalText, currentState.optimizedText, currentState.issues);
+        displayResult(currentState.originalText, currentState.optimizedText, currentState.issues, currentState.extra);
         
         // 恢复按钮
         elements.analyzeBtn.innerHTML = '<i class="fas fa-magic"></i><span>一键智能审查</span>';
@@ -584,11 +610,12 @@ function loadReviewReport(recordId) {
     currentState.originalText = originalText;
     currentState.optimizedText = optimizedText;
     currentState.issues = issues;
+    currentState.extra = (record && record.extra) ? record.extra : {};
     // 设置上一个视图为个人中心，以便返回按钮正确显示
     currentState.lastView = 'profile';
     
     // 显示结果
-    displayResult(originalText, optimizedText, issues);
+    displayResult(originalText, optimizedText, issues, currentState.extra);
     
     // 跳转到审查报告页面
     switchView('result');
@@ -605,29 +632,157 @@ function loadReviewReport(recordId) {
 }
 
 // 显示审查结果
-function displayResult(original, optimized, issues) {
+function displayResult(original, optimized, issues, extra) {
+    extra = extra || {};
+    
     // 添加高亮
     const highlightedOriginal = highlightText(original, issues);
     elements.originalText.innerHTML = highlightedOriginal;
     
-    // 优化后的文本也高亮
-    const highlightedOptimized = highlightText(optimized, issues.filter(i => !i.wrongWord));
-    elements.optimizedText.innerHTML = highlightedOptimized || optimized;
+    // 优化后的文本
+    const finalOptimized = extra.optimized_full_text || optimized;
+    elements.optimizedText.innerHTML = escapeHtml(finalOptimized);
+    
+    // 显示审查摘要
+    displayReviewSummary(extra);
     
     // 显示风险摘要
-    displayRiskSummary(issues);
+    displayRiskSummary(issues, extra);
+    
+    // 显示源文解析（如果有）
+    displaySourceUnits(extra.source_units);
     
     // 显示问题列表
-    displayIssuesList(issues);
+    displayIssuesList(issues, extra);
+    
+    // 显示备注
+    if (extra.notes) {
+        displayNotes(extra.notes);
+    }
 }
 
-function displayRiskSummary(issues) {
+// 显示审查摘要
+function displayReviewSummary(extra) {
+    let summaryEl = document.getElementById('review-summary');
+    if (!summaryEl) {
+        summaryEl = document.createElement('div');
+        summaryEl.id = 'review-summary';
+        summaryEl.className = 'review-summary-box';
+        const riskSummaryEl = elements.riskSummary;
+        if (riskSummaryEl && riskSummaryEl.parentNode) {
+            riskSummaryEl.parentNode.insertBefore(summaryEl, riskSummaryEl.nextSibling);
+        }
+    }
+    
+    if (!extra.summary && !extra.target_country && !extra.product_type) {
+        summaryEl.style.display = 'none';
+        return;
+    }
+    
+    summaryEl.style.display = 'block';
+    const isRecommended = extra.is_recommended_for_listing;
+    const overallRisk = extra.overall_risk_level || '';
+    
+    summaryEl.innerHTML = `
+        <div class="summary-header">
+            <i class="fas fa-info-circle"></i>
+            <span>审查摘要</span>
+        </div>
+        <div class="summary-meta">
+            ${extra.target_country ? `<span><strong>目标国家：</strong>${extra.target_country}</span>` : ''}
+            ${extra.product_type ? `<span><strong>纺织品种类：</strong>${extra.product_type}</span>` : ''}
+            ${extra.input_language ? `<span><strong>输入语言：</strong>${extra.input_language}</span>` : ''}
+            ${extra.rewrite_language ? `<span><strong>改写语言：</strong>${extra.rewrite_language}</span>` : ''}
+        </div>
+        ${overallRisk ? `<p class="summary-risk-level"><strong>综合风险：</strong><span class="risk-badge ${getOverallRiskClass(overallRisk)}">${overallRisk}</span> ${isRecommended === false ? '<span class="risk-badge high">不建议上架</span>' : isRecommended === true ? '<span class="risk-badge safe">建议上架</span>' : ''}</p>` : ''}
+        ${extra.summary ? `<p class="summary-text">${escapeHtml(extra.summary)}</p>` : ''}
+    `;
+}
+
+function getOverallRiskClass(risk) {
+    if (!risk) return 'safe';
+    if (risk.includes('高') || risk.toLowerCase().includes('high')) return 'high';
+    if (risk.includes('中') || risk.toLowerCase().includes('medium')) return 'medium';
+    if (risk.includes('低') || risk.toLowerCase().includes('low')) return 'low';
+    return 'safe';
+}
+
+// 显示源文解析
+function displaySourceUnits(sourceUnits) {
+    let el = document.getElementById('source-units');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'source-units';
+        el.className = 'source-units-box';
+        const summaryEl = document.getElementById('review-summary');
+        if (summaryEl && summaryEl.parentNode) {
+            summaryEl.parentNode.insertBefore(el, summaryEl.nextSibling);
+        }
+    }
+    
+    if (!sourceUnits || sourceUnits.length === 0) {
+        el.style.display = 'none';
+        return;
+    }
+    
+    el.style.display = 'block';
+    el.innerHTML = `
+        <div class="source-units-header">
+            <i class="fas fa-language"></i>
+            <span>原文解析（${sourceUnits.length}个片段）</span>
+        </div>
+        <div class="source-units-list">
+            ${sourceUnits.map(u => `
+                <div class="source-unit-item">
+                    <span class="source-unit-id">${u.source_unit_id || ''}</span>
+                    <span class="source-unit-text">${escapeHtml(u.original_text || '')}</span>
+                    <span class="source-unit-meaning">${escapeHtml(u.meaning_zh || '')}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// 显示备注
+function displayNotes(notes) {
+    let el = document.getElementById('review-notes');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'review-notes';
+        el.className = 'review-notes-box';
+        const issuesEl = elements.issuesList;
+        if (issuesEl && issuesEl.parentNode) {
+            issuesEl.parentNode.insertBefore(el, issuesEl.nextSibling);
+        }
+    }
+    
+    el.innerHTML = `
+        <div class="notes-header">
+            <i class="fas fa-comment-dots"></i>
+            <span>审查备注</span>
+        </div>
+        <p>${escapeHtml(notes)}</p>
+    `;
+}
+
+// HTML转义
+function escapeHtml(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function displayRiskSummary(issues, extra) {
     elements.riskSummary.innerHTML = '';
     
     const counts = {
-        high: issues.filter(i => i.riskLevel === 'high').length,
-        medium: issues.filter(i => i.riskLevel === 'medium').length,
-        low: issues.filter(i => i.riskLevel === 'low').length
+        high: issues.filter(i => i.riskLevel === 'high' || (i.risk_level && (i.risk_level.includes('高') || i.risk_level.toLowerCase().includes('high')))).length,
+        medium: issues.filter(i => i.riskLevel === 'medium' || (i.risk_level && (i.risk_level.includes('中') || i.risk_level.toLowerCase().includes('medium')))).length,
+        low: issues.filter(i => i.riskLevel === 'low' || (i.risk_level && (i.risk_level.includes('低') || i.risk_level.toLowerCase().includes('low')))).length
     };
     
     if (issues.length === 0) {
@@ -646,7 +801,7 @@ function displayRiskSummary(issues) {
     }
 }
 
-function displayIssuesList(issues) {
+function displayIssuesList(issues, extra) {
     elements.issuesList.innerHTML = '';
     
     if (issues.length === 0) {
@@ -654,43 +809,60 @@ function displayIssuesList(issues) {
         return;
     }
     
-    // 按风险等级排序：高危 > 中危 > 低危
+    // 兼容新旧两种格式的风险等级
+    const getRisk = (issue) => {
+        if (issue.riskLevel) return issue.riskLevel;
+        if (issue.risk_level) {
+            if (issue.risk_level.includes('高') || issue.risk_level.toLowerCase().includes('high')) return 'high';
+            if (issue.risk_level.includes('中') || issue.risk_level.toLowerCase().includes('medium')) return 'medium';
+            if (issue.risk_level.includes('低') || issue.risk_level.toLowerCase().includes('low')) return 'low';
+        }
+        return 'medium';
+    };
+    
+    // 按风险等级排序
     const sortedIssues = [...issues].sort((a, b) => {
         const riskOrder = { high: 0, medium: 1, low: 2 };
-        return riskOrder[a.riskLevel] - riskOrder[b.riskLevel];
+        return riskOrder[getRisk(a)] - riskOrder[getRisk(b)];
     });
     
     sortedIssues.forEach(issue => {
         const issueEl = document.createElement('div');
-        issueEl.className = `issue-item ${issue.riskLevel}-risk`;
+        const risk = getRisk(issue);
+        issueEl.className = `issue-item ${risk}-risk`;
         
-        let positionHtml = '';
-        if (issue.wrongWord) {
-            positionHtml = `<p><strong>问题位置：</strong>"${issue.wrongWord}"</p>`;
-        } else if (issue.matchedWord) {
-            positionHtml = `<p><strong>问题位置：</strong>"${issue.matchedWord}"</p>`;
-        } else if (issue.type === '王室相关表述风险') {
-            positionHtml = `<p><strong>问题位置：</strong>"royal style" 和 "look like a queen"</p>`;
-        } else if (issue.type === '语法与表达优化') {
-            positionHtml = `<p><strong>问题位置：</strong>整体文案</p>`;
-        }
+        // 兼容新旧字段
+        const exactQuote = issue.exact_quote || issue.wrongWord || issue.matchedWord || '';
+        const quoteMeaning = issue.quote_meaning_zh || '';
+        const problemPosition = issue.problem_position || '';
+        const riskType = issue.risk_type || issue.type || '文化合规';
+        const culturalBackground = issue.cultural_background || issue.description || '';
+        const reason = issue.reason || '';
+        const ragEvidence = issue.rag_evidence || '';
+        const modificationSuggestion = issue.modification_suggestion || issue.suggestion || '请根据描述修改相关文案';
+        const suggestedRewrite = issue.suggested_rewrite || '';
+        const sourceUnitId = issue.source_unit_id || '';
         
-        const riskEmoji = issue.riskLevel === 'high' ? '🔴 ' : issue.riskLevel === 'medium' ? '🟡 ' : '🟢 ';
+        const riskEmoji = risk === 'high' ? '🔴 ' : risk === 'medium' ? '🟡 ' : '🟢 ';
         
         issueEl.innerHTML = `
             <div class="issue-header" onclick="toggleIssue(this)">
                 <div class="issue-title">
-                    <span class="issue-type" style="color: var(--${issue.riskLevel}-risk)">${riskEmoji}${issue.type}</span>
+                    <span class="issue-type" style="color: var(--${risk}-risk)">${riskEmoji}${sourceUnitId ? '['+sourceUnitId+'] ' : ''}${escapeHtml(riskType)}</span>
                 </div>
-                <span class="issue-risk">${getRiskLabel(issue.riskLevel)} <i class="fas fa-chevron-down"></i></span>
+                <span class="issue-risk">${getRiskLabel(risk)} <i class="fas fa-chevron-down"></i></span>
             </div>
             <div class="issue-content collapsed">
-                ${positionHtml}
-                <p><strong>风险等级：</strong>${riskEmoji}${getRiskLabel(issue.riskLevel)}</p>
-                <p><strong>${issue.type.includes('语法') ? '具体问题' : '文化背景'}：</strong>${issue.description}</p>
+                ${exactQuote ? `<p><strong>问题原文：</strong><span class="quote-text">"${escapeHtml(exactQuote)}"</span>${quoteMeaning ? ` <span class="quote-meaning">（${escapeHtml(quoteMeaning)}）</span>` : ''}</p>` : ''}
+                ${problemPosition ? `<p><strong>问题位置：</strong>${escapeHtml(problemPosition)}</p>` : ''}
+                <p><strong>风险等级：</strong>${riskEmoji}${getRiskLabel(risk)}</p>
+                ${culturalBackground ? `<p><strong>文化背景：</strong>${escapeHtml(culturalBackground)}</p>` : ''}
+                ${reason ? `<p><strong>问题原因：</strong>${escapeHtml(reason)}</p>` : ''}
+                ${ragEvidence ? `<details class="rag-details"><summary>RAG证据参考</summary><p>${escapeHtml(ragEvidence)}</p></details>` : ''}
                 <div class="suggestion-box">
-                    <p><strong>修改建议：</strong>${issue.suggestion}</p>
+                    <p><strong>修改建议：</strong>${escapeHtml(modificationSuggestion)}</p>
                 </div>
+                ${suggestedRewrite ? `<div class="rewrite-box"><p><strong>建议改写：</strong><span class="rewrite-text">${escapeHtml(suggestedRewrite)}</span></p></div>` : ''}
             </div>
         `;
         
@@ -807,7 +979,7 @@ function renderHistoryRecords() {
 }
 
 // 保存审查报告到历史记录
-function saveToHistory(text, country, issues) {
+function saveToHistory(text, country, issues, productType) {
     // 获取当前时间
     const now = new Date();
     const year = now.getFullYear();
@@ -844,13 +1016,15 @@ function saveToHistory(text, country, issues) {
         text: text.length > 100 ? text.substring(0, 100) + '...' : text,
         country: country,
         countryName: countryName,
+        productType: productType || '',
         date: dateStr,
         issueCount: issues.length,
         status: status,
         statusText: statusText,
         originalText: text,
         optimizedText: currentState.optimizedText,
-        issues: issues
+        issues: issues,
+        extra: currentState.extra || {}
     };
     
     // 添加到历史记录开头（最新的在最前面）

@@ -34,9 +34,10 @@ app.get('/api/test', (req, res) => {
 app.post('/api/analyze', async (req, res) => {
     try {
         console.log('=== /api/analyze 收到请求 ===');
-        const { text, country } = req.body;
+        const { text, country, productType } = req.body;
         console.log('text:', text);
         console.log('country:', country);
+        console.log('productType:', productType);
         console.log('DIFY_API_URL:', process.env.DIFY_API_URL);
         console.log('DIFY_API_KEY exists:', !!process.env.DIFY_API_KEY);
         
@@ -52,39 +53,72 @@ app.post('/api/analyze', async (req, res) => {
             'indonesia': '印度尼西亚',
             'vietnam': '越南',
             'malaysia': '马来西亚',
-            'singapore': '新加坡'
+            'singapore': '新加坡',
+            'philippines': '菲律宾',
+            'myanmar': '缅甸',
+            'cambodia': '柬埔寨',
+            'laos': '老挝',
+            'brunei': '文莱'
         };
         
         const countryName = countryNames[country] || country;
+        const textileType = productType || '未指定';
         
-        const systemPrompt = `你是跨境电商合规审查专家，专门审查出口到东南亚市场的农产品和纺织品文案。
+        const systemPrompt = `你是跨境电商合规审查专家，专门审查出口到东南亚市场的纺织品文案。
 
 请从以下维度审查文案：
 1. 宗教禁忌（如佛教、伊斯兰教等）
 2. 文化禁忌（颜色、动物、符号等）
 3. 政治敏感内容
 4. 颜色禁忌（不同国家对颜色有不同偏好）
-5. 王室相关内容（泰国特别敏感）
+5. 王室相关内容（泰国、柬埔寨特别敏感）
 6. 语言规范和准确性
 7. 产品认证要求
 8. 广告法规定
+9. 不同纺织品种类的特殊禁忌
 
-请用JSON格式返回审查结果：
+请严格按照以下JSON格式返回审查结果：
 {
-  "success": true,
-  "originalText": "原始文案",
-  "optimizedText": "优化后的文案",
+  "target_country": "目标国家中文名",
+  "product_type": "纺织品种类",
+  "input_language": "输入文案的语言（如：泰语、中文、英语等）",
+  "rewrite_language": "改写文案的目标语言（一般与输入语言一致）",
+  "overall_risk_level": "高风险/中风险/低风险/无风险",
+  "is_recommended_for_listing": true/false,
+  "summary": "对整体审查结果的简要总结（1-2句话）",
+  "source_units": [
+    {
+      "source_unit_id": "S1",
+      "original_text": "原文片段1",
+      "meaning_zh": "原文片段1的中文含义"
+    }
+  ],
   "issues": [
     {
-      "type": "问题类型",
-      "matchedWord": "匹配到的词",
-      "riskLevel": "high/medium/low",
-      "description": "问题描述",
-      "suggestion": "修改建议",
-      "position": 在原文中开始位置
+      "issue_id": 1,
+      "source_unit_id": "S1",
+      "exact_quote": "问题原文片段",
+      "quote_meaning_zh": "问题原文的中文翻译",
+      "problem_position": "问题在文案中的具体位置描述",
+      "risk_level": "高风险/中风险/低风险",
+      "risk_type": "风险类型（如：宗教文化风险、政治敏感风险、颜色禁忌风险等）",
+      "cultural_background": "该问题背后的文化背景和禁忌解释",
+      "reason": "为什么这是一个问题（具体原因）",
+      "rag_evidence": "RAG参考证据（如果无可填'无特定RAG证据'）",
+      "modification_suggestion": "具体的修改建议",
+      "suggested_rewrite": "建议的改写文案"
     }
-  ]
+  ],
+  "optimized_full_text": "完整优化后的文案（保留原语言）",
+  "notes": "补充说明（如果有）"
 }
+
+注意：
+- source_units需要将原文按语义片段拆分，每个片段要有独立ID（S1, S2, S3...）
+- issues数组中每个问题必须通过source_unit_id关联到source_units
+- exact_quote必须是原文中的真实片段
+- optimized_full_text必须是与原语言一致的完整优化文案
+- 如无问题，issues设为空数组，overall_risk_level为"无风险"，is_recommended_for_listing为true
 
 请直接返回JSON，不要有其他内容。`;
 
@@ -95,11 +129,15 @@ app.post('/api/analyze', async (req, res) => {
                 'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
             },
             body: JSON.stringify({
-                query: `请审查以下出口到${countryName}市场的文案：\n\n${text}\n\n只需返回JSON格式的审查结果。`,
+                query: `请审查以下出口到${countryName}市场的【${textileType}】类纺织品文案：\n\n${text}\n\n请按要求返回JSON格式的审查结果。`,
                 user: 'web-user',
                 response_mode: 'blocking',
                 conversation_id: '',
-                inputs: {},
+                inputs: {
+                    target_country: countryName,
+                    product_type: textileType,
+                    input_text: text
+                },
                 files: []
             })
         });
@@ -184,22 +222,70 @@ app.post('/api/analyze', async (req, res) => {
 
 // 将Dify返回的JSON转换为前端期望的格式
 function convertDifyResponse(parsed, originalText) {
-    // 如果已经是前端期望的格式（有issues数组且是数组）
+    // 新的Dify格式：包含issues数组和详细字段
     if (parsed.issues && Array.isArray(parsed.issues)) {
+        // 转换issues为前端友好格式，同时保留原始字段
+        const formattedIssues = parsed.issues.map(issue => {
+            // 统一风险等级（高/中/低 -> high/medium/low）
+            let riskLevel = issue.riskLevel;
+            if (!riskLevel && issue.risk_level) {
+                if (issue.risk_level.includes('高') || issue.risk_level.toLowerCase().includes('high')) {
+                    riskLevel = 'high';
+                } else if (issue.risk_level.includes('中') || issue.risk_level.toLowerCase().includes('medium')) {
+                    riskLevel = 'medium';
+                } else if (issue.risk_level.includes('低') || issue.risk_level.toLowerCase().includes('low')) {
+                    riskLevel = 'low';
+                } else {
+                    riskLevel = 'medium';
+                }
+            }
+            
+            return {
+                // 兼容旧字段（供前端兼容显示）
+                type: issue.risk_type || '文化合规',
+                matchedWord: issue.exact_quote || '',
+                riskLevel: riskLevel || 'medium',
+                description: issue.cultural_background || issue.reason || '',
+                suggestion: issue.modification_suggestion || '请根据描述修改相关文案',
+                position: -1,
+                // 新字段
+                issue_id: issue.issue_id,
+                source_unit_id: issue.source_unit_id,
+                exact_quote: issue.exact_quote,
+                quote_meaning_zh: issue.quote_meaning_zh,
+                problem_position: issue.problem_position,
+                risk_level: issue.risk_level,
+                risk_type: issue.risk_type,
+                cultural_background: issue.cultural_background,
+                reason: issue.reason,
+                rag_evidence: issue.rag_evidence,
+                modification_suggestion: issue.modification_suggestion,
+                suggested_rewrite: issue.suggested_rewrite
+            };
+        });
+        
         return {
             success: true,
-            originalText: parsed.originalText || originalText,
-            optimizedText: parsed.optimizedText || parsed.corrected_text || originalText,
-            issues: parsed.issues,
-            isCompliant: parsed.is_compliant,
-            inputLanguage: parsed.input_language
+            originalText: originalText,
+            optimizedText: parsed.optimized_full_text || parsed.corrected_text || originalText,
+            issues: formattedIssues,
+            // 新格式字段直通
+            target_country: parsed.target_country,
+            product_type: parsed.product_type,
+            input_language: parsed.input_language,
+            rewrite_language: parsed.rewrite_language,
+            overall_risk_level: parsed.overall_risk_level,
+            is_recommended_for_listing: parsed.is_recommended_for_listing,
+            summary: parsed.summary,
+            source_units: parsed.source_units || [],
+            optimized_full_text: parsed.optimized_full_text,
+            notes: parsed.notes
         };
     }
     
-    // Dify实际返回的格式适配
+    // 旧Dify格式兼容（input_language, is_compliant, issues_in_chinese, corrected_text）
     const issues = [];
     if (parsed.issues_in_chinese && !parsed.is_compliant) {
-        // 将issues_in_chinese字符串拆分为问题数组
         const issueText = parsed.issues_in_chinese;
         const issueMatches = issueText.match(/\d+\.\s*[^0-9]+?(?=\d+\.|$)/g);
         
@@ -212,7 +298,8 @@ function convertDifyResponse(parsed, originalText) {
                     riskLevel: 'high',
                     description: cleanStr,
                     suggestion: '请根据描述修改相关文案',
-                    position: -1
+                    position: -1,
+                    cultural_background: cleanStr
                 });
             });
         } else {
@@ -222,7 +309,8 @@ function convertDifyResponse(parsed, originalText) {
                 riskLevel: 'high',
                 description: issueText,
                 suggestion: '请根据描述修改相关文案',
-                position: -1
+                position: -1,
+                cultural_background: issueText
             });
         }
     }
@@ -233,7 +321,15 @@ function convertDifyResponse(parsed, originalText) {
         optimizedText: parsed.corrected_text || originalText,
         issues: issues,
         isCompliant: parsed.is_compliant,
-        inputLanguage: parsed.input_language
+        inputLanguage: parsed.input_language,
+        target_country: parsed.target_country || '',
+        product_type: parsed.product_type || '',
+        input_language: parsed.input_language,
+        overall_risk_level: parsed.is_compliant ? '无风险' : '高风险',
+        is_recommended_for_listing: parsed.is_compliant !== false,
+        summary: parsed.issues_in_chinese || '审查完成',
+        source_units: [],
+        notes: ''
     };
 }
 

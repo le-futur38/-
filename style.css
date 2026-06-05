@@ -1094,6 +1094,187 @@ body {
 }
 
 /* ===================================
+   审查摘要
+   =================================== */
+.review-summary-box {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e6f0ff 100%);
+    border-left: 4px solid var(--primary-color);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.summary-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+    font-size: 1.05rem;
+}
+
+.summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.summary-meta span strong {
+    color: var(--text-primary);
+}
+
+.summary-risk-level {
+    margin: 0.75rem 0;
+}
+
+.summary-text {
+    color: var(--text-primary);
+    line-height: 1.6;
+    margin-top: 0.5rem;
+}
+
+/* ===================================
+   源文解析
+   =================================== */
+.source-units-box {
+    background: #fafbfc;
+    border: 1px solid #e8edf5;
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.source-units-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+}
+
+.source-units-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.source-unit-item {
+    display: grid;
+    grid-template-columns: 50px 1fr 1fr;
+    gap: 1rem;
+    padding: 0.6rem 0.8rem;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e8edf5;
+    align-items: center;
+}
+
+.source-unit-id {
+    font-weight: 700;
+    color: var(--primary-color);
+    font-size: 0.9rem;
+}
+
+.source-unit-text {
+    font-weight: 500;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.source-unit-meaning {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    word-break: break-word;
+}
+
+/* ===================================
+   审查备注
+   =================================== */
+.review-notes-box {
+    background: #fff8e1;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.notes-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #b45309;
+    margin-bottom: 0.5rem;
+}
+
+.review-notes-box p {
+    color: #78350f;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* ===================================
+   问题卡片新字段
+   =================================== */
+.quote-text {
+    background: #fee2e2;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-weight: 600;
+    color: #991b1b;
+}
+
+.quote-meaning {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-left: 0.5rem;
+}
+
+.rag-details {
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
+    background: #f0f9ff;
+    border-left: 3px solid #0ea5e9;
+    border-radius: 4px;
+}
+
+.rag-details summary {
+    cursor: pointer;
+    color: #0369a1;
+    font-weight: 500;
+    user-select: none;
+}
+
+.rag-details summary:hover {
+    color: #075985;
+}
+
+.rag-details p {
+    margin-top: 0.5rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.rewrite-box {
+    margin-top: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #ecfdf5;
+    border-left: 3px solid #10b981;
+    border-radius: 4px;
+}
+
+.rewrite-text {
+    color: #065f46;
+    font-weight: 500;
+}
+
+/* ===================================
    问题列表
    =================================== */
 .issues-section h3 {
