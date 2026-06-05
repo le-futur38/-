@@ -656,66 +656,79 @@ let STATS_DATA = {
     }
 };
 
-// 历史会话数据
+// 历史会话简要数据（点击时通过 Dify API 还原完整报告）
 let HISTORY_RECORDS = [
     {
         id: 'thailand-1',
-        text: 'ผ้ากันหนาวไหมราชวงศ์สีเหลืองสวยงาม พร้อมลายหมูน่ารัก เหมาะสำหรับสวมใส่ในฤดูร้อน',
+        text: 'ผ้ากันหนาวไหมราชวงศ์สีเหลือง พร้อมลายหมูน่ารัก',
         country: 'thailand',
         countryName: '泰国',
-        date: '2026-03-15 14:30',
+        productType: '服装',
+        date: '2026-06-01 14:30',
         issueCount: 3,
         status: 'high',
-        statusText: '已优化'
+        statusText: '高风险',
+        isDemo: true
     },
     {
         id: 'malaysia-1',
-        text: 'Baju Kain Kapas Organik - Kualiti Premium Buatan Tangan dengan Corak Tradisional',
+        text: 'Beg kulit babi terbaru, promosi eksklusif untuk bulan puasa',
         country: 'malaysia',
         countryName: '马来西亚',
-        date: '2026-02-28 09:15',
-        issueCount: 1,
-        status: 'medium',
-        statusText: '已优化'
+        productType: '包袋布艺',
+        date: '2026-06-03 20:16',
+        issueCount: 3,
+        status: 'high',
+        statusText: '高风险',
+        isDemo: false,
+        conversationId: null
     },
     {
         id: 'singapore-1',
-        text: 'Silk Scarf Traditional Pattern Luxury Collection - Premium Quality Silk',
+        text: 'Silk Scarf Traditional Pattern Luxury Collection',
         country: 'singapore',
         countryName: '新加坡',
-        date: '2026-02-10 16:45',
+        productType: '服饰配件',
+        date: '2026-05-28 16:45',
         issueCount: 0,
         status: 'safe',
-        statusText: '合规'
+        statusText: '合规',
+        isDemo: true
     },
     {
         id: 'indonesia-1',
-        text: 'Kaos Batik Motif Naga - Bahan Katun Berkualitas Tinggi',
+        text: 'Kaos Batik Motif Naga - Bahan Katun',
         country: 'indonesia',
         countryName: '印度尼西亚',
-        date: '2026-01-15 11:20',
+        productType: '童装',
+        date: '2026-05-20 11:20',
         issueCount: 2,
         status: 'medium',
-        statusText: '已优化'
+        statusText: '中风险',
+        isDemo: true
     },
     {
         id: 'vietnam-1',
-        text: 'Áo Khoác Len Nông Thôn Việt Nam - Chất Lượng Cao, May Chặt Chẽ',
+        text: 'Áo Khoác Len Nông Thôn Việt Nam',
         country: 'vietnam',
         countryName: '越南',
-        date: '2025-12-20 15:00',
+        productType: '家用纺织品',
+        date: '2026-05-15 15:00',
         issueCount: 0,
         status: 'safe',
-        statusText: '合规'
+        statusText: '合规',
+        isDemo: true
     },
     {
         id: 'thailand-2',
-        text: 'กระโปรงผ้าฝ้ายสีแดง - สไตล์โมเดิร์นสำหรับสตรี',
+        text: 'กระโปรงผ้าฝ้ายสีแดง สไตล์โมเดิร์น',
         country: 'thailand',
         countryName: '泰国',
-        date: '2025-11-10 10:30',
+        productType: '床上用品',
+        date: '2026-05-10 10:30',
         issueCount: 1,
         status: 'low',
-        statusText: '已优化'
+        statusText: '低风险',
+        isDemo: true
     }
 ];

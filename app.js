@@ -492,7 +492,7 @@ function analyzeText() {
         };
         
         // 保存到历史记录
-        saveToHistory(text, selectedCountry, currentState.issues, selectedTextile);
+        saveToHistory(text, selectedCountry, currentState.issues, selectedTextile, result.conversation_id, result.message_id);
         
         // 显示结果
         displayResult(currentState.originalText, currentState.optimizedText, currentState.issues, currentState.extra);
@@ -550,121 +550,106 @@ function getCountryName(countryCode) {
 
 // 从历史记录加载审查报告
 function loadReviewReport(recordId) {
-    // 首先尝试从动态保存的历史记录中查找
     const record = HISTORY_RECORDS.find(r => r.id === recordId);
     
-    let originalText, optimizedText, issues;
-    
-    if (record && record.originalText) {
-        // 使用动态保存的数据
-        originalText = record.originalText;
-        optimizedText = record.optimizedText || record.originalText;
-        issues = record.issues || [];
-    } else {
-        // 回退到预定义的演示数据
-        switch(recordId) {
-            case 'thailand-demo':
-            case 'thailand-1':
-                originalText = "ผ้ากันหนาวไหมราชวงศ์สีเหลืองสวยงาม พร้อมลายหมูน่ารัก เหมาะสำหรับสวมใส่ในฤดูร้อน ออกแบบโดยเป็นแรงบันดาลใจจากสไตล์ราชวงศ์ จะทำให้คุณดูเหมือนราชินี";
-                optimizedText = "ผ้ากันหนาวไหมสีทองพร้อมลายช้างชั้นเยี่ยม เหมาะสำหรับต่างๆ ในฤดูร้อน ออกแบบที่มีสไตล์สง่างาม จะทำให้คุณดูสง่างามและประณีต";
-                issues = FIXED_DEMO_RESULT.issues;
-                break;
-            case 'malaysia-demo':
-            case 'malaysia-1':
-                originalText = "Baju Kain Kapas Organik - Kualiti Premium Buatan Tangan dengan Corak Tradisional";
-                optimizedText = "Baju Kain Kapas Buatan Tangan Kualiti Premium dengan Corak Tradisional Elegan";
-                issues = [
-                    {
-                        id: 0,
-                        type: '文化建议',
-                        matchedWord: 'Corak Tradisional',
-                        riskLevel: 'low',
-                        description: '马来传统图案在商业使用中应确保不涉及宗教元素',
-                        suggestion: '建议使用更通用的装饰图案描述',
-                        position: 45
-                    }
-                ];
-                break;
-            case 'singapore-demo':
-            case 'singapore-1':
-                originalText = "Silk Scarf Traditional Pattern Luxury Collection - Premium Quality Silk";
-                optimizedText = "Silk Scarf Traditional Pattern Luxury Collection - Premium Quality Silk";
-                issues = [];
-                break;
-            case 'indonesia-1':
-                originalText = "Kaos Batik Motif Naga - Bahan Katun Berkualitas Tinggi";
-                optimizedText = "Kaos Batik Motif Naga - Bahan Katun Berkualitas Tinggi";
-                issues = [
-                    {
-                        id: 0,
-                        type: '文化建议',
-                        matchedWord: 'Naga',
-                        riskLevel: 'medium',
-                        description: '龙图案在印尼文化中有特殊含义，需确保不冒犯当地信仰',
-                        suggestion: '建议使用更中性的传统图案',
-                        position: 15
-                    },
-                    {
-                        id: 1,
-                        type: '认证要求',
-                        matchedWord: 'Bahan Katun',
-                        riskLevel: 'low',
-                        description: '棉制品进入印尼市场需符合SNI认证要求',
-                        suggestion: '确保产品已获得相关认证',
-                        position: 28
-                    }
-                ];
-                break;
-            case 'vietnam-1':
-                originalText = "Áo Khoác Len Nông Thôn Việt Nam - Chất Lượng Cao, May Chặt Chẽ";
-                optimizedText = "Áo Khoác Len Nông Thôn Việt Nam - Chất Lượng Cao, May Chặt Chẽ";
-                issues = [];
-                break;
-            case 'thailand-2':
-                originalText = "กระโปรงผ้าฝ้ายสีแดง - สไตล์โมเดิร์นสำหรับสตรี";
-                optimizedText = "กระโปรงผ้าฝ้ายสีแดง - สไตล์โมเดิร์นสำหรับสตรี";
-                issues = [
-                    {
-                        id: 0,
-                        type: '颜色建议',
-                        matchedWord: 'สีแดง',
-                        riskLevel: 'low',
-                        description: '红色在泰国文化中与吉祥喜庆相关，适合产品使用',
-                        suggestion: '文案符合要求，可正常使用',
-                        position: 14
-                    }
-                ];
-                break;
-            default:
-                originalText = "No data available";
-                optimizedText = "No data available";
-                issues = [];
-        }
+    if (!record) {
+        showToast('未找到该历史记录');
+        return;
     }
     
-    // 保存到全局状态
-    currentState.originalText = originalText;
-    currentState.optimizedText = optimizedText;
-    currentState.issues = issues;
-    currentState.extra = (record && record.extra) ? record.extra : {};
-    // 设置上一个视图为个人中心，以便返回按钮正确显示
+    // 演示记录无法还原报告
+    if (record.isDemo || !record.conversationId) {
+        showDemoReportNotice(record);
+        return;
+    }
+    
+    // 显示加载状态
+    showToast('正在从 Dify 还原审查报告...');
+    
+    // 调用后端API获取历史消息
+    const url = `https://airy-respect-production.up.railway.app/api/message?conversation_id=${encodeURIComponent(record.conversationId)}${record.messageId ? '&message_id=' + encodeURIComponent(record.messageId) : ''}`;
+    
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (!result.success) {
+            showToast('还原失败：' + (result.error || '未知错误'));
+            return;
+        }
+        
+        // 保存到全局状态
+        currentState.originalText = result.originalText || record.text;
+        currentState.optimizedText = result.optimizedText || result.corrected_text || result.originalText || record.text;
+        currentState.issues = result.issues || [];
+        currentState.extra = {
+            target_country: result.target_country,
+            product_type: result.product_type,
+            input_language: result.input_language,
+            rewrite_language: result.rewrite_language,
+            overall_risk_level: result.overall_risk_level,
+            is_recommended_for_listing: result.is_recommended_for_listing,
+            summary: result.summary,
+            source_units: result.source_units,
+            optimized_full_text: result.optimized_full_text || result.corrected_text,
+            notes: result.notes
+        };
+        currentState.lastView = 'profile';
+        
+        // 显示结果
+        displayResult(currentState.originalText, currentState.optimizedText, currentState.issues, currentState.extra);
+        
+        // 跳转到审查报告页面
+        switchView('result');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        const highCount = currentState.issues.filter(i => i.riskLevel === 'high').length;
+        const mediumCount = currentState.issues.filter(i => i.riskLevel === 'medium').length;
+        if (currentState.issues.length > 0) {
+            showToast(`已还原报告：发现${highCount}个高风险、${mediumCount}个中风险问题`);
+        } else {
+            showToast('已还原报告，未发现明显风险问题');
+        }
+    })
+    .catch(error => {
+        console.error('还原历史报告失败:', error);
+        showToast('还原失败：' + error.message);
+    });
+}
+
+// 显示演示记录提示
+function showDemoReportNotice(record) {
+    const notice = `
+        <div style="text-align: center; padding: 3rem 1rem;">
+            <i class="fas fa-info-circle" style="font-size: 3rem; color: var(--primary-color); margin-bottom: 1rem;"></i>
+            <h3 style="color: var(--text-primary); margin-bottom: 0.5rem;">演示数据</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">这是一条演示记录，没有存储 Dify 的 conversation_id</p>
+            <p style="color: var(--text-secondary);">目标国家：<strong>${record.countryName}</strong> · 纺织品种类：<strong>${record.productType || '未指定'}</strong></p>
+            <p style="color: var(--text-secondary);">发现问题：<strong>${record.issueCount}</strong> 个 · 风险等级：<strong>${record.statusText}</strong></p>
+            <p style="color: var(--text-secondary); margin-top: 1.5rem; font-size: 0.9rem;">
+                请新建一次审查后，历史记录即可通过 Dify API 还原完整报告
+            </p>
+        </div>
+    `;
+    
+    // 找到审查报告页面的容器并显示
+    const resultView = document.getElementById('result-view');
+    if (resultView) {
+        // 临时保存原有内容
+        if (!resultView.dataset.originalContent) {
+            resultView.dataset.originalContent = resultView.innerHTML;
+        }
+        resultView.innerHTML = notice;
+    }
+    
     currentState.lastView = 'profile';
-    
-    // 显示结果
-    displayResult(originalText, optimizedText, issues, currentState.extra);
-    
-    // 跳转到审查报告页面
     switchView('result');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    
-    // 显示提示
-    if (issues.length > 0) {
-        const highCount = issues.filter(i => i.riskLevel === 'high').length;
-        const mediumCount = issues.filter(i => i.riskLevel === 'medium').length;
-        showToast(`已加载历史审查报告，发现${highCount}个高风险问题，${mediumCount}个中风险问题`);
-    } else {
-        showToast('已加载历史审查报告，未发现问题');
-    }
+    showToast('这是演示数据，无法还原完整报告');
 }
 
 // 显示审查结果
@@ -1001,16 +986,33 @@ function renderHistoryRecords() {
     
     HISTORY_RECORDS.forEach(record => {
         const item = document.createElement('div');
-        item.className = 'history-item';
+        item.className = `history-item status-${record.status}`;
         item.dataset.recordId = record.id;
         
         const issueText = record.issueCount > 0 ? `发现 ${record.issueCount} 个问题` : '未发现问题';
+        const productText = record.productType ? ` · ${record.productType}` : '';
+        const demoBadge = record.isDemo ? '<span class="demo-badge">演示</span>' : '';
+        
+        // 状态标签
+        const statusBadge = record.status === 'safe' 
+            ? '<span class="status-badge safe">合规</span>'
+            : record.status === 'low'
+            ? '<span class="status-badge low">低风险</span>'
+            : record.status === 'medium'
+            ? '<span class="status-badge medium">中风险</span>'
+            : '<span class="status-badge high">高风险</span>';
         
         item.innerHTML = `
             <div class="history-content">
-                <p class="history-text">${record.text}</p>
-                <p class="history-meta">${record.countryName} · ${issueText}</p>
+                <div class="history-header">
+                    <span class="history-country">${record.countryName}</span>
+                    ${statusBadge}
+                    ${demoBadge}
+                </div>
+                <p class="history-text">${escapeHtml(record.text)}</p>
+                <p class="history-meta">${record.date}${productText} · ${issueText}</p>
             </div>
+            <i class="fas fa-chevron-right history-arrow"></i>
         `;
         
         container.appendChild(item);
@@ -1022,7 +1024,7 @@ function renderHistoryRecords() {
 }
 
 // 保存审查报告到历史记录
-function saveToHistory(text, country, issues, productType) {
+function saveToHistory(text, country, issues, productType, conversationId, messageId) {
     // 获取当前时间
     const now = new Date();
     const year = now.getFullYear();
@@ -1041,22 +1043,25 @@ function saveToHistory(text, country, issues, productType) {
     let status, statusText;
     if (highCount > 0) {
         status = 'high';
-        statusText = '已优化';
+        statusText = '高风险';
     } else if (mediumCount > 0) {
         status = 'medium';
-        statusText = '已优化';
+        statusText = '中风险';
     } else if (issues.length > 0) {
         status = 'low';
-        statusText = '已优化';
+        statusText = '低风险';
     } else {
         status = 'safe';
         statusText = '合规';
     }
     
-    // 创建新记录
+    // 截断文案预览
+    const textPreview = text.length > 60 ? text.substring(0, 60) + '...' : text;
+    
+    // 创建新记录（只存简要信息）
     const newRecord = {
         id: `${country}-${Date.now()}`,
-        text: text.length > 100 ? text.substring(0, 100) + '...' : text,
+        text: textPreview,
         country: country,
         countryName: countryName,
         productType: productType || '',
@@ -1064,10 +1069,9 @@ function saveToHistory(text, country, issues, productType) {
         issueCount: issues.length,
         status: status,
         statusText: statusText,
-        originalText: text,
-        optimizedText: currentState.optimizedText,
-        issues: issues,
-        extra: currentState.extra || {}
+        isDemo: false,
+        conversationId: conversationId || null,
+        messageId: messageId || null
     };
     
     // 添加到历史记录开头（最新的在最前面）
@@ -1078,25 +1082,12 @@ function saveToHistory(text, country, issues, productType) {
         HISTORY_RECORDS.pop();
     }
     
-    // 持久化到localStorage（避免刷新页面后丢失）
-    try {
-        const persistable = HISTORY_RECORDS.map(r => ({
-            ...r,
-            // 确保额外字段也被保存
-            extra: r.extra || {}
-        }));
-        localStorage.setItem('review_history', JSON.stringify(persistable));
-    } catch (e) {
-        console.warn('保存历史记录到localStorage失败:', e);
-    }
-    
     // 更新历史记录显示（如果当前在个人中心页面）
     if (currentState.currentView === 'profile') {
         renderHistoryRecords();
-        showToast('历史记录已更新');
     }
     
-    console.log('审查报告已保存到历史记录，当前记录数:', HISTORY_RECORDS.length);
+    console.log('审查报告已保存到历史记录，当前记录数:', HISTORY_RECORDS.length, 'conversationId:', conversationId);
 }
 
 // ===================================
@@ -1390,31 +1381,10 @@ function updateScrollAnimations() {
 // 页面加载完成后立即检查一次
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(updateScrollAnimations, 100);
-    loadHistoryFromStorage();
 });
 
 // 滚动时检查
 window.addEventListener('scroll', updateScrollAnimations);
-
-// 从localStorage加载历史记录
-function loadHistoryFromStorage() {
-    try {
-        const saved = localStorage.getItem('review_history');
-        if (saved) {
-            const records = JSON.parse(saved);
-            if (Array.isArray(records) && records.length > 0) {
-                // 把保存的记录合并到HISTORY_RECORDS开头（保留预定义的演示记录）
-                // 过滤掉已经存在的id，避免重复
-                const existingIds = new Set(HISTORY_RECORDS.map(r => r.id));
-                const newRecords = records.filter(r => !existingIds.has(r.id));
-                HISTORY_RECORDS = [...newRecords, ...HISTORY_RECORDS];
-                console.log(`从localStorage加载了 ${newRecords.length} 条历史记录`);
-            }
-        }
-    } catch (e) {
-        console.warn('从localStorage加载历史记录失败:', e);
-    }
-}
 
 // 启动应用
 init();

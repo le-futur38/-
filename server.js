@@ -30,6 +30,111 @@ app.get('/api/test', (req, res) => {
     });
 });
 
+// 从Dify获取历史消息（用于还原历史审查报告）
+app.get('/api/message', async (req, res) => {
+    const { conversation_id, message_id } = req.query;
+    
+    if (!conversation_id) {
+        return res.status(400).json({
+            success: false,
+            error: '缺少 conversation_id 参数'
+        });
+    }
+    
+    try {
+        // 调用 Dify GET /v1/messages API
+        const difyUrl = `${process.env.DIFY_API_URL}/messages?conversation_id=${encodeURIComponent(conversation_id)}&user=web-user&limit=20`;
+        console.log('[Dify消息API] 请求:', difyUrl);
+        
+        const response = await fetch(difyUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
+            }
+        });
+        
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error('[Dify消息API] 错误:', response.status, errText.substring(0, 500));
+            return res.status(response.status).json({
+                success: false,
+                error: `Dify API错误: ${response.status}`,
+                message: errText.substring(0, 200)
+            });
+        }
+        
+        const data = await response.json();
+        console.log('[Dify消息API] 收到数据:', data.data ? data.data.length : 0, '条消息');
+        
+        // 找到对应的消息
+        let message = null;
+        if (data.data && data.data.length > 0) {
+            if (message_id) {
+                message = data.data.find(m => m.id === message_id);
+            }
+            if (!message) {
+                // 找最新的AI回复消息
+                const aiMessages = data.data.filter(m => m.answer && m.answer.length > 0);
+                message = aiMessages[aiMessages.length - 1] || data.data[data.data.length - 1];
+            }
+        }
+        
+        if (!message) {
+            return res.status(404).json({
+                success: false,
+                error: '未找到对应的消息',
+                conversation_id
+            });
+        }
+        
+        // 解析AI返回的内容
+        let content = message.answer || '';
+        console.log('[Dify消息API] answer长度:', content.length);
+        
+        // 清理markdown代码块
+        content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        
+        // 尝试提取JSON
+        let parsed = null;
+        try {
+            parsed = JSON.parse(content);
+        } catch (e) {
+            const match = content.match(/\{[\s\S]*\}/);
+            if (match) {
+                try {
+                    parsed = JSON.parse(match[0]);
+                } catch (e2) {
+                    console.error('[Dify消息API] JSON解析失败');
+                }
+            }
+        }
+        
+        if (!parsed) {
+            return res.status(500).json({
+                success: false,
+                error: '无法解析Dify返回的JSON',
+                rawAnswer: content.substring(0, 500)
+            });
+        }
+        
+        // 转换为前端期望的格式
+        const originalText = message.query ? message.query.replace(/^请审查以下出口到.*?市场.*?文案：\n\n/, '').replace(/\n\n请按要求返回JSON格式的审查结果。$/, '') : '';
+        const result = convertDifyResponse(parsed, originalText);
+        result.conversation_id = conversation_id;
+        result.message_id = message.id;
+        
+        res.json(result);
+        
+    } catch (error) {
+        console.error('[Dify消息API] 异常:', error);
+        res.status(500).json({
+            success: false,
+            error: '服务器内部错误',
+            message: error.message
+        });
+    }
+});
+
 // API代理端点
 app.post('/api/analyze', async (req, res) => {
     try {
