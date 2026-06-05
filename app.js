@@ -489,7 +489,15 @@ function analyzeText() {
     })
     .catch(error => {
         console.error('API调用失败:', error);
-        showToast('AI审查服务暂时不可用，请稍后重试');
+        
+        // 区分不同的错误类型
+        let errorMsg = 'AI审查服务暂时不可用，请稍后重试';
+        
+        if (error.message && error.message.includes('Failed to fetch')) {
+            errorMsg = '网络连接失败，请检查网络后重试';
+        }
+        
+        showToast(errorMsg);
         elements.analyzeBtn.innerHTML = '<i class="fas fa-magic"></i><span>一键智能审查</span>';
         elements.analyzeBtn.disabled = false;
     });

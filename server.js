@@ -122,13 +122,11 @@ app.post('/api/analyze', async (req, res) => {
 
 请直接返回JSON，不要有其他内容。`;
 
-        const response = await fetch(`${process.env.DIFY_API_URL}/chat-messages`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
-            },
-            body: JSON.stringify({
+        // 调用Dify API，带重试机制
+        const difyResponse = await callDifyWithRetry({
+            url: `${process.env.DIFY_API_URL}/chat-messages`,
+            apiKey: process.env.DIFY_API_KEY,
+            body: {
                 query: `请审查以下出口到${countryName}市场的【${textileType}】类纺织品文案：\n\n${text}\n\n请按要求返回JSON格式的审查结果。`,
                 user: 'web-user',
                 response_mode: 'blocking',
@@ -139,22 +137,17 @@ app.post('/api/analyze', async (req, res) => {
                     input_text: text
                 },
                 files: []
-            })
-        });
+            }
+        }, 3); // 最多重试3次
 
-        if (!response.ok) {
-            const errText = await response.text();
-            console.error('Dify API error response:', errText);
-            throw new Error(`Dify API error: ${response.status} - ${errText}`);
-        }
-
-        const data = await response.json();
+        const data = difyResponse.data;
         console.log('=== Dify响应 ===');
         console.log('完整数据:', JSON.stringify(data).substring(0, 2000));
         console.log('answer字段长度:', data.answer ? data.answer.length : 0);
         console.log('answer内容预览:', data.answer ? data.answer.substring(0, 500) : '空');
         console.log('conversation_id:', data.conversation_id);
         console.log('message_id:', data.message_id);
+        console.log('重试次数:', difyResponse.attempts);
 
         // 解析AI返回的内容
         let result;
@@ -212,10 +205,26 @@ app.post('/api/analyze', async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('API Error:', error);
-        res.status(500).json({
+        
+        // 判断是否是Dify服务不可用
+        const isDifyDown = error.message && (
+            error.message.includes('Dify服务') ||
+            error.message.includes('Gateway') ||
+            error.message.includes('Cloudflare') ||
+            error.message.includes('504') ||
+            error.message.includes('不可用')
+        );
+        
+        const statusCode = isDifyDown ? 503 : 500;
+        const userMessage = isDifyDown 
+            ? 'AI审查服务暂时不可用（Dify官方服务异常），请稍后重试或联系管理员' 
+            : '服务器内部错误';
+        
+        res.status(statusCode).json({
             success: false,
-            error: '服务器内部错误',
-            message: error.message
+            error: userMessage,
+            message: error.message,
+            retryable: isDifyDown
         });
     }
 });
@@ -356,6 +365,67 @@ function extractMatchedWord(description) {
 
 // 提供静态文件
 app.use(express.static(path.join(__dirname)));
+
+// 带重试机制的Dify API调用
+async function callDifyWithRetry({ url, apiKey, body }, maxRetries = 3) {
+    const RETRY_DELAYS = [2000, 5000, 10000]; // 重试间隔（毫秒）
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`[Dify] 第 ${attempt}/${maxRetries} 次尝试...`);
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(body),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            // 读取响应内容（先读text再判断是HTML还是JSON）
+            const responseText = await response.text();
+            
+            if (!response.ok) {
+                // 检查是否是HTML错误页（如Cloudflare 504）
+                if (responseText.trim().startsWith('<') || responseText.includes('Gateway time-out') || responseText.includes('504')) {
+                    throw new Error(`Dify服务暂时不可用（HTTP ${response.status}，Cloudflare网关错误）`);
+                }
+                throw new Error(`Dify API error: ${response.status} - ${responseText.substring(0, 200)}`);
+            }
+            
+            // 检查响应是否是JSON
+            if (responseText.trim().startsWith('<')) {
+                throw new Error(`Dify返回了非JSON响应（可能是网关错误页）`);
+            }
+            
+            // 解析JSON
+            const data = JSON.parse(responseText);
+            console.log(`[Dify] 第 ${attempt} 次尝试成功`);
+            return { data, attempts: attempt };
+            
+        } catch (error) {
+            lastError = error;
+            console.error(`[Dify] 第 ${attempt} 次尝试失败:`, error.message);
+            
+            if (attempt < maxRetries) {
+                const delay = RETRY_DELAYS[attempt - 1] || 10000;
+                console.log(`[Dify] 等待 ${delay/1000} 秒后重试...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+    
+    // 所有重试都失败
+    throw new Error(`Dify服务在 ${maxRetries} 次尝试后仍不可用: ${lastError?.message || '未知错误'}`);
+}
 
 app.listen(PORT, () => {
     console.log(`🚀 服务器已启动: http://localhost:${PORT}`);
