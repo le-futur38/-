@@ -427,6 +427,9 @@ function analyzeText() {
         return;
     }
     
+    // 如果 result-view 之前被替换为演示提示页，先还原原始内容
+    restoreResultViewContent();
+    
     // 显示加载状态
     elements.analyzeBtn.innerHTML = '<span class="loading"></span> AI分析中...';
     elements.analyzeBtn.disabled = true;
@@ -582,6 +585,9 @@ function loadReviewReport(recordId) {
             return;
         }
         
+        // 先还原 result-view 原始内容（如果之前被替换为演示提示）
+        restoreResultViewContent();
+        
         // 保存到全局状态
         currentState.originalText = result.originalText || record.text;
         currentState.optimizedText = result.optimizedText || result.corrected_text || result.originalText || record.text;
@@ -650,7 +656,7 @@ function showDemoReportNotice(record) {
                 <i class="fas fa-lightbulb"></i>
                 请新建一次审查（输入文案 → 点击"一键智能审查"），新记录会出现在历史记录顶部，点击新记录即可通过 Dify API 还原完整报告
             </div>
-            <button class="demo-notice-btn" onclick="switchView('home'); window.scrollTo({top:0,behavior:'smooth'});">
+            <button class="demo-notice-btn" onclick="goHomeFromDemo();">
                 <i class="fas fa-plus-circle"></i> 前往新建审查
             </button>
         </div>
@@ -670,6 +676,22 @@ function showDemoReportNotice(record) {
     switchView('result');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast('这是演示数据，无法还原完整报告');
+}
+
+// 从演示提示页返回首页（同时还原 result-view 原始内容）
+function goHomeFromDemo() {
+    restoreResultViewContent();
+    switchView('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 还原 result-view 原始内容（如果之前被替换为演示提示）
+function restoreResultViewContent() {
+    const resultView = document.getElementById('result-view');
+    if (resultView && resultView.dataset.originalContent) {
+        resultView.innerHTML = resultView.dataset.originalContent;
+        delete resultView.dataset.originalContent;
+    }
 }
 
 // 显示审查结果
