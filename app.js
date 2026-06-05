@@ -450,13 +450,7 @@ function analyzeText() {
         }
     }, 10000);
     
-    // 调用Railway后端API（带超时控制）
-    const fetchController = new AbortController();
-    const fetchTimeoutId = setTimeout(() => {
-        fetchController.abort();
-        console.error('前端fetch超时（3分钟）');
-    }, 180000); // 3分钟超时
-    
+    // 调用Railway后端API
     fetch('https://airy-respect-production.up.railway.app/api/analyze', {
         method: 'POST',
         headers: {
@@ -466,11 +460,9 @@ function analyzeText() {
             text: text,
             country: selectedCountry,
             productType: selectedTextile
-        }),
-        signal: fetchController.signal
+        })
     })
     .then(response => {
-        clearTimeout(fetchTimeoutId);
         clearInterval(progressTimer);
         console.log('收到响应，状态:', response.status);
         
@@ -521,16 +513,13 @@ function analyzeText() {
         }
     })
     .catch(error => {
-        clearTimeout(fetchTimeoutId);
         clearInterval(progressTimer);
         console.error('API调用失败:', error);
         
         // 区分不同的错误类型
         let errorMsg = 'AI审查服务暂时不可用，请稍后重试';
         
-        if (error.name === 'AbortError') {
-            errorMsg = '请求超时（3分钟），AI分析时间过长，请重试';
-        } else if (error.message && error.message.includes('Failed to fetch')) {
+        if (error.message && error.message.includes('Failed to fetch')) {
             errorMsg = '网络连接失败，请检查网络后重试';
         } else if (error.message) {
             errorMsg = `审查失败：${error.message}`;
