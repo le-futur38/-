@@ -494,8 +494,18 @@ function analyzeText() {
             notes: result.notes
         };
         
-        // 保存到历史记录
-        saveToHistory(text, selectedCountry, currentState.issues, selectedTextile, result.conversation_id, result.message_id);
+        // 保存到历史记录（同时返回新记录的 id 用于本地缓存）
+        const newRecordId = saveToHistory(text, selectedCountry, currentState.issues, selectedTextile, result.conversation_id, result.message_id);
+        
+        // 同时保存完整报告到 localStorage 作为 Dify API 失败时的降级缓存
+        if (newRecordId) {
+            saveReportToLocalCache(newRecordId, {
+                originalText: currentState.originalText,
+                optimizedText: currentState.optimizedText,
+                issues: currentState.issues,
+                extra: currentState.extra
+            });
+        }
         
         // 显示结果
         displayResult(currentState.originalText, currentState.optimizedText, currentState.issues, currentState.extra);
@@ -578,53 +588,92 @@ function loadReviewReport(recordId) {
             'Content-Type': 'application/json'
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            // 502/503/504 等后端错误 → 尝试本地缓存
+            console.warn('[历史记录] Dify API 返回', response.status, '尝试本地缓存');
+            return tryLoadFromLocalCache(record, `Dify服务异常 (${response.status})`);
+        }
+        return response.json();
+    })
     .then(result => {
+        if (!result) return; // 已经处理过（来自 tryLoadFromLocalCache）
+        
         if (!result.success) {
-            showToast('还原失败：' + (result.error || '未知错误'));
-            return;
+            // Dify 返回失败 → 尝试本地缓存
+            console.warn('[历史记录] Dify 返回失败:', result.error, '尝试本地缓存');
+            return tryLoadFromLocalCache(record, result.error || 'Dify返回失败');
         }
         
-        // 先还原 result-view 原始内容（如果之前被替换为演示提示）
-        restoreResultViewContent();
-        
-        // 保存到全局状态
-        currentState.originalText = result.originalText || record.text;
-        currentState.optimizedText = result.optimizedText || result.corrected_text || result.originalText || record.text;
-        currentState.issues = result.issues || [];
-        currentState.extra = {
-            target_country: result.target_country,
-            product_type: result.product_type,
-            input_language: result.input_language,
-            rewrite_language: result.rewrite_language,
-            overall_risk_level: result.overall_risk_level,
-            is_recommended_for_listing: result.is_recommended_for_listing,
-            summary: result.summary,
-            source_units: result.source_units,
-            optimized_full_text: result.optimized_full_text || result.corrected_text,
-            notes: result.notes
-        };
-        currentState.lastView = 'profile';
-        
-        // 显示结果
-        displayResult(currentState.originalText, currentState.optimizedText, currentState.issues, currentState.extra);
-        
-        // 跳转到审查报告页面
-        switchView('result');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        
-        const highCount = currentState.issues.filter(i => i.riskLevel === 'high').length;
-        const mediumCount = currentState.issues.filter(i => i.riskLevel === 'medium').length;
-        if (currentState.issues.length > 0) {
-            showToast(`已还原报告：发现${highCount}个高风险、${mediumCount}个中风险问题`);
-        } else {
-            showToast('已还原报告，未发现明显风险问题');
-        }
+        // 成功：从 Dify 获取到了
+        renderReportFromData({
+            originalText: result.originalText || record.text,
+            optimizedText: result.optimizedText || result.corrected_text || result.originalText || record.text,
+            issues: result.issues || [],
+            extra: {
+                target_country: result.target_country,
+                product_type: result.product_type,
+                input_language: result.input_language,
+                rewrite_language: result.rewrite_language,
+                overall_risk_level: result.overall_risk_level,
+                is_recommended_for_listing: result.is_recommended_for_listing,
+                summary: result.summary,
+                source_units: result.source_units,
+                optimized_full_text: result.optimized_full_text || result.corrected_text,
+                notes: result.notes
+            }
+        }, 'Dify');
     })
     .catch(error => {
-        console.error('还原历史报告失败:', error);
-        showToast('还原失败：' + error.message);
+        console.error('还原历史报告失败（Dify调用异常）:', error);
+        // 网络错误或解析失败 → 尝试本地缓存
+        tryLoadFromLocalCache(record, '网络错误: ' + error.message);
     });
+}
+
+// 尝试从本地缓存加载（如果也没有则提示用户）
+function tryLoadFromLocalCache(record, reason) {
+    console.log('[历史记录] 尝试本地缓存，原因:', reason);
+    const cached = loadReportFromLocalCache(record.id);
+    
+    if (cached) {
+        console.log('[历史记录] 本地缓存命中');
+        showToast('Dify服务暂时不可用，已从本地缓存还原');
+        renderReportFromData(cached, '缓存');
+    } else {
+        console.log('[历史记录] 本地缓存也未命中');
+        showToast('Dify服务异常且无本地缓存: ' + reason);
+    }
+}
+
+// 统一渲染报告（从Dify或本地缓存）
+function renderReportFromData(data, source) {
+    // 先还原 result-view 原始内容（如果之前被替换为演示提示）
+    restoreResultViewContent();
+    
+    // 保存到全局状态
+    currentState.originalText = data.originalText;
+    currentState.optimizedText = data.optimizedText;
+    currentState.issues = data.issues || [];
+    currentState.extra = data.extra || {};
+    currentState.lastView = 'profile';
+    
+    // 显示结果
+    displayResult(currentState.originalText, currentState.optimizedText, currentState.issues, currentState.extra);
+    
+    // 跳转到审查报告页面
+    switchView('result');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    const highCount = currentState.issues.filter(i => i.riskLevel === 'high').length;
+    const mediumCount = currentState.issues.filter(i => i.riskLevel === 'medium').length;
+    if (currentState.issues.length > 0) {
+        const suffix = source === '缓存' ? '（本地缓存）' : '';
+        showToast(`已还原报告${suffix}：发现${highCount}个高风险、${mediumCount}个中风险问题`);
+    } else {
+        const suffix = source === '缓存' ? '（本地缓存）' : '';
+        showToast(`已还原报告${suffix}，未发现明显风险问题`);
+    }
 }
 
 // 显示演示记录提示
@@ -1130,6 +1179,51 @@ function saveToHistory(text, country, issues, productType, conversationId, messa
     }
     
     console.log('审查报告已保存到历史记录，当前记录数:', HISTORY_RECORDS.length, 'conversationId:', conversationId);
+    return newRecord.id;  // 返回新记录的 id 供调用方使用
+}
+
+// ===================================
+// 本地缓存（localStorage） - Dify API 失败时的降级方案
+// ===================================
+
+const REPORT_CACHE_PREFIX = 'report_cache_';
+const REPORT_CACHE_EXPIRY_DAYS = 30; // 30天有效期
+
+function saveReportToLocalCache(recordId, report) {
+    try {
+        const cacheData = {
+            timestamp: Date.now(),
+            report: report
+        };
+        localStorage.setItem(REPORT_CACHE_PREFIX + recordId, JSON.stringify(cacheData));
+        console.log('[本地缓存] 已保存报告:', recordId);
+    } catch (e) {
+        console.warn('[本地缓存] 保存失败:', e.message);
+    }
+}
+
+function loadReportFromLocalCache(recordId) {
+    try {
+        const raw = localStorage.getItem(REPORT_CACHE_PREFIX + recordId);
+        if (!raw) return null;
+        
+        const cacheData = JSON.parse(raw);
+        const age = Date.now() - cacheData.timestamp;
+        const maxAge = REPORT_CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+        
+        if (age > maxAge) {
+            // 缓存已过期，删除
+            localStorage.removeItem(REPORT_CACHE_PREFIX + recordId);
+            console.log('[本地缓存] 报告已过期:', recordId);
+            return null;
+        }
+        
+        console.log('[本地缓存] 命中缓存:', recordId, '年龄:', Math.round(age / 1000), '秒');
+        return cacheData.report;
+    } catch (e) {
+        console.warn('[本地缓存] 读取失败:', e.message);
+        return null;
+    }
 }
 
 // ===================================
