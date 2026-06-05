@@ -1078,6 +1078,18 @@ function saveToHistory(text, country, issues, productType) {
         HISTORY_RECORDS.pop();
     }
     
+    // 持久化到localStorage（避免刷新页面后丢失）
+    try {
+        const persistable = HISTORY_RECORDS.map(r => ({
+            ...r,
+            // 确保额外字段也被保存
+            extra: r.extra || {}
+        }));
+        localStorage.setItem('review_history', JSON.stringify(persistable));
+    } catch (e) {
+        console.warn('保存历史记录到localStorage失败:', e);
+    }
+    
     // 更新历史记录显示（如果当前在个人中心页面）
     if (currentState.currentView === 'profile') {
         renderHistoryRecords();
@@ -1378,10 +1390,31 @@ function updateScrollAnimations() {
 // 页面加载完成后立即检查一次
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(updateScrollAnimations, 100);
+    loadHistoryFromStorage();
 });
 
 // 滚动时检查
 window.addEventListener('scroll', updateScrollAnimations);
+
+// 从localStorage加载历史记录
+function loadHistoryFromStorage() {
+    try {
+        const saved = localStorage.getItem('review_history');
+        if (saved) {
+            const records = JSON.parse(saved);
+            if (Array.isArray(records) && records.length > 0) {
+                // 把保存的记录合并到HISTORY_RECORDS开头（保留预定义的演示记录）
+                // 过滤掉已经存在的id，避免重复
+                const existingIds = new Set(HISTORY_RECORDS.map(r => r.id));
+                const newRecords = records.filter(r => !existingIds.has(r.id));
+                HISTORY_RECORDS = [...newRecords, ...HISTORY_RECORDS];
+                console.log(`从localStorage加载了 ${newRecords.length} 条历史记录`);
+            }
+        }
+    } catch (e) {
+        console.warn('从localStorage加载历史记录失败:', e);
+    }
+}
 
 // 启动应用
 init();
