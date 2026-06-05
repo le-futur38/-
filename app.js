@@ -624,15 +624,35 @@ function loadReviewReport(recordId) {
 // 显示演示记录提示
 function showDemoReportNotice(record) {
     const notice = `
-        <div style="text-align: center; padding: 3rem 1rem;">
-            <i class="fas fa-info-circle" style="font-size: 3rem; color: var(--primary-color); margin-bottom: 1rem;"></i>
-            <h3 style="color: var(--text-primary); margin-bottom: 0.5rem;">演示数据</h3>
-            <p style="color: var(--text-secondary); margin-bottom: 1rem;">这是一条演示记录，没有存储 Dify 的 conversation_id</p>
-            <p style="color: var(--text-secondary);">目标国家：<strong>${record.countryName}</strong> · 纺织品种类：<strong>${record.productType || '未指定'}</strong></p>
-            <p style="color: var(--text-secondary);">发现问题：<strong>${record.issueCount}</strong> 个 · 风险等级：<strong>${record.statusText}</strong></p>
-            <p style="color: var(--text-secondary); margin-top: 1.5rem; font-size: 0.9rem;">
-                请新建一次审查后，历史记录即可通过 Dify API 还原完整报告
-            </p>
+        <div class="demo-notice-container">
+            <i class="fas fa-info-circle"></i>
+            <h3>这是一条演示数据</h3>
+            <p>演示数据没有存储 Dify 的 conversation_id，无法还原完整审查报告</p>
+            <div class="demo-notice-info">
+                <div class="demo-notice-item">
+                    <span class="demo-label">目标国家：</span>
+                    <span class="demo-value">${record.countryName}</span>
+                </div>
+                <div class="demo-notice-item">
+                    <span class="demo-label">纺织品种类：</span>
+                    <span class="demo-value">${record.productType || '未指定'}</span>
+                </div>
+                <div class="demo-notice-item">
+                    <span class="demo-label">发现问题：</span>
+                    <span class="demo-value">${record.issueCount} 个</span>
+                </div>
+                <div class="demo-notice-item">
+                    <span class="demo-label">风险等级：</span>
+                    <span class="demo-value">${record.statusText}</span>
+                </div>
+            </div>
+            <div class="demo-notice-tip">
+                <i class="fas fa-lightbulb"></i>
+                请新建一次审查（输入文案 → 点击"一键智能审查"），新记录会出现在历史记录顶部，点击新记录即可通过 Dify API 还原完整报告
+            </div>
+            <button class="demo-notice-btn" onclick="switchView('home'); window.scrollTo({top:0,behavior:'smooth'});">
+                <i class="fas fa-plus-circle"></i> 前往新建审查
+            </button>
         </div>
     `;
     
@@ -1262,6 +1282,13 @@ function initEventListeners() {
     
     // 返回按钮点击事件
     elements.backBtn.addEventListener('click', () => {
+        // 如果当前 result-view 显示的是演示数据提示，需要还原原内容
+        const resultView = document.getElementById('result-view');
+        if (resultView && resultView.dataset.originalContent) {
+            resultView.innerHTML = resultView.dataset.originalContent;
+            delete resultView.dataset.originalContent;
+        }
+        
         // 根据来源页面返回
         const targetView = currentState.lastView === 'profile' ? 'profile' : 'review';
         switchView(targetView);

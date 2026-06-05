@@ -1989,6 +1989,105 @@ canvas {
     color: var(--text-secondary);
 }
 
+/* 演示数据提示页 */
+.demo-notice-container {
+    max-width: 480px;
+    margin: 4rem auto;
+    padding: 2.5rem 2rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.demo-notice-container > .fa-info-circle {
+    font-size: 3.5rem;
+    color: var(--primary-color);
+    margin-bottom: 1.25rem;
+    display: inline-block;
+}
+
+.demo-notice-container h3 {
+    color: var(--text-primary);
+    margin: 0 0 0.75rem 0;
+    font-size: 1.5rem;
+}
+
+.demo-notice-container > p {
+    color: var(--text-secondary);
+    margin: 0 0 1.5rem 0;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.demo-notice-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1.25rem;
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+.demo-notice-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.demo-label {
+    color: var(--text-secondary);
+}
+
+.demo-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.demo-notice-tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 1rem;
+    background-color: #fef3c7;
+    color: #92400e;
+    border-radius: var(--radius-md);
+    margin-bottom: 1.5rem;
+    text-align: left;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.demo-notice-tip .fa-lightbulb {
+    flex-shrink: 0;
+    font-size: 1.1rem;
+    margin-top: 0.15rem;
+}
+
+.demo-notice-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.demo-notice-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
 
 
 .settings-list {
