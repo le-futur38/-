@@ -781,15 +781,22 @@ function displaySourceUnits(sourceUnits) {
 
 // 显示备注
 function displayNotes(notes) {
-    let el = document.getElementById('review-notes');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'review-notes';
-        el.className = 'review-notes-box';
-        const issuesEl = elements.issuesList;
-        if (issuesEl && issuesEl.parentNode) {
-            issuesEl.parentNode.insertBefore(el, issuesEl.nextSibling);
-        }
+    // 先清除旧的备注元素，避免上一次审查的备注残留
+    const oldEl = document.getElementById('review-notes');
+    if (oldEl) {
+        oldEl.remove();
+    }
+    
+    if (!notes) {
+        return;
+    }
+    
+    const el = document.createElement('div');
+    el.id = 'review-notes';
+    el.className = 'review-notes-box';
+    const issuesEl = elements.issuesList;
+    if (issuesEl && issuesEl.parentNode) {
+        issuesEl.parentNode.insertBefore(el, issuesEl.nextSibling);
     }
     
     el.innerHTML = `
