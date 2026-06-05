@@ -122,14 +122,14 @@ app.post('/api/analyze', async (req, res) => {
 
 请直接返回JSON，不要有其他内容。`;
 
-        // 调用Dify API，带重试机制
+        // 调用Dify API，使用流式模式避免Cloudflare 60秒超时切断
         const difyResponse = await callDifyWithRetry({
             url: `${process.env.DIFY_API_URL}/chat-messages`,
             apiKey: process.env.DIFY_API_KEY,
             body: {
                 query: `请审查以下出口到${countryName}市场的【${textileType}】类纺织品文案：\n\n${text}\n\n请按要求返回JSON格式的审查结果。`,
                 user: 'web-user',
-                response_mode: 'blocking',
+                response_mode: 'streaming',
                 conversation_id: '',
                 inputs: {
                     country: countryName,
@@ -138,7 +138,7 @@ app.post('/api/analyze', async (req, res) => {
                 },
                 files: []
             }
-        }, 3); // 最多重试3次
+        }, 2); // 流式模式只需2次重试
 
         const data = difyResponse.data;
         console.log('=== Dify响应 ===');
@@ -366,49 +366,101 @@ function extractMatchedWord(description) {
 // 提供静态文件
 app.use(express.static(path.join(__dirname)));
 
-// 带重试机制的Dify API调用
+// 带重试机制的Dify API调用（支持流式响应）
 async function callDifyWithRetry({ url, apiKey, body }, maxRetries = 3) {
     const RETRY_DELAYS = [2000, 5000, 10000]; // 重试间隔（毫秒）
     let lastError = null;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`[Dify] 第 ${attempt}/${maxRetries} 次尝试...`);
+            console.log(`[Dify] 第 ${attempt}/${maxRetries} 次尝试（流式模式）...`);
             
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时（Dify分析可能需要1-2分钟）
+            // 流式模式禁用超时，依赖Cloudflare的流连接保持
+            const timeoutId = null;
             
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Accept': 'text/event-stream'
                 },
                 body: JSON.stringify(body),
                 signal: controller.signal
             });
             
-            clearTimeout(timeoutId);
-            
-            // 读取响应内容（先读text再判断是HTML还是JSON）
-            const responseText = await response.text();
+            if (timeoutId) clearTimeout(timeoutId);
             
             if (!response.ok) {
+                // 尝试读取错误内容
+                let errText = '';
+                try {
+                    errText = await response.text();
+                } catch (e) {}
+                
                 // 检查是否是HTML错误页（如Cloudflare 504）
-                if (responseText.trim().startsWith('<') || responseText.includes('Gateway time-out') || responseText.includes('504')) {
+                if (errText.trim().startsWith('<') || errText.includes('Gateway time-out') || errText.includes('504')) {
                     throw new Error(`Dify服务暂时不可用（HTTP ${response.status}，Cloudflare网关错误）`);
                 }
-                throw new Error(`Dify API error: ${response.status} - ${responseText.substring(0, 200)}`);
+                throw new Error(`Dify API error: ${response.status} - ${errText.substring(0, 200)}`);
             }
             
-            // 检查响应是否是JSON
-            if (responseText.trim().startsWith('<')) {
-                throw new Error(`Dify返回了非JSON响应（可能是网关错误页）`);
+            // 处理流式响应（SSE格式）
+            console.log(`[Dify] 接收到流式响应，开始读取...`);
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullAnswer = '';
+            let conversationId = '';
+            let messageId = '';
+            let lastEvent = null;
+            
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const dataStr = line.substring(5).trim();
+                            if (!dataStr || dataStr === '[DONE]') continue;
+                            
+                            try {
+                                const event = JSON.parse(dataStr);
+                                lastEvent = event;
+                                
+                                if (event.event === 'message' || event.event === 'agent_message') {
+                                    if (event.answer) fullAnswer += event.answer;
+                                } else if (event.event === 'message_end') {
+                                    if (event.conversation_id) conversationId = event.conversation_id;
+                                    if (event.message_id) messageId = event.message_id;
+                                } else if (event.event === 'error') {
+                                    throw new Error(`Dify返回错误: ${event.message || '未知错误'}`);
+                                }
+                            } catch (e) {
+                                if (e.message.includes('Dify返回错误')) throw e;
+                                // 忽略JSON解析错误（可能是不完整的事件）
+                            }
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
             }
             
-            // 解析JSON
-            const data = JSON.parse(responseText);
-            console.log(`[Dify] 第 ${attempt} 次尝试成功`);
+            console.log(`[Dify] 流式响应接收完成，answer长度: ${fullAnswer.length}`);
+            
+            // 构造与blocking模式相同的返回结构
+            const data = {
+                answer: fullAnswer,
+                conversation_id: conversationId,
+                message_id: messageId,
+                ...(lastEvent || {}) // 包含其他可能的字段
+            };
+            
             return { data, attempts: attempt };
             
         } catch (error) {
