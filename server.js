@@ -376,7 +376,7 @@ async function callDifyWithRetry({ url, apiKey, body }, maxRetries = 3) {
             console.log(`[Dify] 第 ${attempt}/${maxRetries} 次尝试...`);
             
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+            const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时（Dify分析可能需要1-2分钟）
             
             const response = await fetch(url, {
                 method: 'POST',
