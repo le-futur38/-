@@ -32,6 +32,9 @@ app.get('/api/test', (req, res) => {
 
 // 从Dify获取历史消息（用于还原历史审查报告）
 app.get('/api/message', async (req, res) => {
+    console.log('=== /api/message 收到请求 ===');
+    console.log('query参数:', JSON.stringify(req.query));
+    
     const { conversation_id, message_id } = req.query;
     
     if (!conversation_id) {
@@ -44,27 +47,39 @@ app.get('/api/message', async (req, res) => {
     try {
         // 调用 Dify GET /v1/messages API
         const difyUrl = `${process.env.DIFY_API_URL}/messages?conversation_id=${encodeURIComponent(conversation_id)}&user=web-user&limit=20`;
-        console.log('[Dify消息API] 请求:', difyUrl);
+        console.log('[Dify消息API] 请求URL:', difyUrl);
         
         const response = await fetch(difyUrl, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${process.env.DIFY_API_KEY}`
+                'Authorization': `Bearer ${process.env.DIFY_API_KEY}`,
+                'Accept': 'application/json'
             }
         });
         
+        console.log('[Dify消息API] 响应状态:', response.status);
+        
         if (!response.ok) {
             const errText = await response.text();
-            console.error('[Dify消息API] 错误:', response.status, errText.substring(0, 500));
-            return res.status(response.status).json({
+            console.error('[Dify消息API] 错误内容:', errText.substring(0, 1000));
+            
+            // 不要把Dify的502/504原样传给前端（前端会误以为是后端挂了）
+            // 统一返回500并附带详细信息
+            return res.status(500).json({
                 success: false,
-                error: `Dify API错误: ${response.status}`,
-                message: errText.substring(0, 200)
+                error: `Dify消息API调用失败 (${response.status})`,
+                detail: errText.substring(0, 500),
+                difyStatus: response.status,
+                conversation_id
             });
         }
         
         const data = await response.json();
-        console.log('[Dify消息API] 收到数据:', data.data ? data.data.length : 0, '条消息');
+        console.log('[Dify消息API] 收到消息数:', data.data ? data.data.length : 0);
+        
+        if (data.data && data.data.length > 0) {
+            console.log('[Dify消息API] 消息ID列表:', data.data.map(m => m.id).join(', '));
+        }
         
         // 找到对应的消息
         let message = null;
@@ -80,6 +95,7 @@ app.get('/api/message', async (req, res) => {
         }
         
         if (!message) {
+            console.error('[Dify消息API] 未找到消息。message_id:', message_id, '所有消息:', data.data ? data.data.map(m => ({id: m.id, hasAnswer: !!m.answer})) : []);
             return res.status(404).json({
                 success: false,
                 error: '未找到对应的消息',
@@ -87,9 +103,12 @@ app.get('/api/message', async (req, res) => {
             });
         }
         
+        console.log('[Dify消息API] 找到消息，id:', message.id, 'answer长度:', message.answer?.length || 0);
+        
         // 解析AI返回的内容（使用多策略解析器）
         const parseResult = parseDifyAnswer(message.answer);
         if (!parseResult.success) {
+            console.error('[Dify消息API] 解析失败:', parseResult.error);
             return res.status(500).json({
                 success: false,
                 error: '无法解析Dify返回的JSON',
@@ -98,11 +117,16 @@ app.get('/api/message', async (req, res) => {
             });
         }
         
+        console.log('[Dify消息API] 解析成功，JSON字段:', Object.keys(parseResult.parsed));
+        
         // 转换为前端期望的格式
         const originalText = message.query ? message.query.replace(/^请审查以下出口到.*?市场.*?文案：\n\n/, '').replace(/\n\n请按要求返回JSON格式的审查结果。$/, '') : '';
         const result = convertDifyResponse(parseResult.parsed, originalText);
         result.conversation_id = conversation_id;
         result.message_id = message.id;
+        
+        console.log('[Dify消息API] 转换完成，issues数量:', result.issues?.length || 0);
+        console.log('=== /api/message 成功返回 ===');
         
         res.json(result);
         
