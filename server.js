@@ -87,39 +87,20 @@ app.get('/api/message', async (req, res) => {
             });
         }
         
-        // 解析AI返回的内容
-        let content = message.answer || '';
-        console.log('[Dify消息API] answer长度:', content.length);
-        
-        // 清理markdown代码块
-        content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        
-        // 尝试提取JSON
-        let parsed = null;
-        try {
-            parsed = JSON.parse(content);
-        } catch (e) {
-            const match = content.match(/\{[\s\S]*\}/);
-            if (match) {
-                try {
-                    parsed = JSON.parse(match[0]);
-                } catch (e2) {
-                    console.error('[Dify消息API] JSON解析失败');
-                }
-            }
-        }
-        
-        if (!parsed) {
+        // 解析AI返回的内容（使用多策略解析器）
+        const parseResult = parseDifyAnswer(message.answer);
+        if (!parseResult.success) {
             return res.status(500).json({
                 success: false,
                 error: '无法解析Dify返回的JSON',
-                rawAnswer: content.substring(0, 500)
+                detail: parseResult.error,
+                rawAnswer: parseResult.rawContent
             });
         }
         
         // 转换为前端期望的格式
         const originalText = message.query ? message.query.replace(/^请审查以下出口到.*?市场.*?文案：\n\n/, '').replace(/\n\n请按要求返回JSON格式的审查结果。$/, '') : '';
-        const result = convertDifyResponse(parsed, originalText);
+        const result = convertDifyResponse(parseResult.parsed, originalText);
         result.conversation_id = conversation_id;
         result.message_id = message.id;
         
@@ -134,6 +115,159 @@ app.get('/api/message', async (req, res) => {
         });
     }
 });
+
+// 提取第一个完整的JSON对象（基于平衡括号匹配）
+function extractFirstJsonObject(text) {
+    if (!text) return null;
+    
+    // 找到第一个 {
+    const firstBrace = text.indexOf('{');
+    if (firstBrace === -1) return null;
+    
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let start = firstBrace;
+    
+    for (let i = firstBrace; i < text.length; i++) {
+        const c = text[i];
+        
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        
+        if (c === '\\') {
+            escape = true;
+            continue;
+        }
+        
+        if (c === '"' && !escape) {
+            inString = !inString;
+            continue;
+        }
+        
+        if (inString) continue;
+        
+        if (c === '{') {
+            depth++;
+        } else if (c === '}') {
+            depth--;
+            if (depth === 0) {
+                return text.substring(start, i + 1);
+            }
+        }
+    }
+    
+    return null;
+}
+
+// 尝试修复常见的JSON错误
+function tryRepairJson(text) {
+    if (!text) return text;
+    
+    let repaired = text;
+    
+    // 移除尾部逗号 (在 } 或 ] 前的逗号)
+    repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
+    
+    // 单引号替换为双引号（仅在键名/字符串值位置）
+    // 这是一个有风险的修改，谨慎处理：仅在看起来是键的情况下
+    
+    // 移除Markdown代码块标记（如果还有残留）
+    repaired = repaired.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    
+    return repaired.trim();
+}
+
+// 多策略JSON解析
+function parseDifyAnswer(answer) {
+    if (!answer) {
+        return { success: false, error: 'AI返回内容为空' };
+    }
+    
+    console.log('[JSON解析] answer长度:', answer.length);
+    
+    // 清理markdown代码块
+    let content = answer.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    // 策略1: 直接解析
+    try {
+        let parsed = JSON.parse(content);
+        console.log('[JSON解析] 策略1成功（直接解析）');
+        return { success: true, parsed, content };
+    } catch (e1) {
+        console.log('[JSON解析] 策略1失败:', e1.message);
+    }
+    
+    // 策略2: 提取并移除 <think> 块后再解析
+    const thinkStart = content.indexOf('<think>');
+    const thinkEnd = content.indexOf('</think>');
+    if (thinkStart !== -1 && thinkEnd !== -1 && thinkEnd > thinkStart) {
+        content = content.substring(0, thinkStart) + content.substring(thinkEnd + 8);
+        content = content.trim();
+        try {
+            let parsed = JSON.parse(content);
+            console.log('[JSON解析] 策略2成功（移除think块）');
+            return { success: true, parsed, content };
+        } catch (e2) {
+            console.log('[JSON解析] 策略2失败:', e2.message);
+        }
+    }
+    
+    // 策略3: 平衡括号匹配提取第一个完整JSON对象
+    let jsonStr = extractFirstJsonObject(content);
+    if (jsonStr) {
+        try {
+            let parsed = JSON.parse(jsonStr);
+            console.log('[JSON解析] 策略3成功（平衡括号）');
+            return { success: true, parsed, content };
+        } catch (e3) {
+            console.log('[JSON解析] 策略3失败:', e3.message);
+            
+            // 策略3.5: 修复JSON后再试
+            const repaired = tryRepairJson(jsonStr);
+            try {
+                let parsed = JSON.parse(repaired);
+                console.log('[JSON解析] 策略3.5成功（修复JSON）');
+                return { success: true, parsed, content };
+            } catch (e35) {
+                console.log('[JSON解析] 策略3.5失败:', e35.message);
+            }
+        }
+    }
+    
+    // 策略4: 修复整体内容后重试
+    const repairedContent = tryRepairJson(content);
+    if (repairedContent !== content) {
+        try {
+            let parsed = JSON.parse(repairedContent);
+            console.log('[JSON解析] 策略4成功（整体修复）');
+            return { success: true, parsed, content };
+        } catch (e4) {
+            console.log('[JSON解析] 策略4失败:', e4.message);
+        }
+        
+        // 再次尝试平衡括号
+        jsonStr = extractFirstJsonObject(repairedContent);
+        if (jsonStr) {
+            try {
+                let parsed = JSON.parse(jsonStr);
+                console.log('[JSON解析] 策略4.5成功');
+                return { success: true, parsed, content };
+            } catch (e45) {
+                console.log('[JSON解析] 策略4.5失败:', e45.message);
+            }
+        }
+    }
+    
+    // 全部失败：返回原始内容供前端显示
+    return {
+        success: false,
+        error: '所有JSON解析策略均失败',
+        rawContent: content.substring(0, 1000)
+    };
+}
 
 // API代理端点
 app.post('/api/analyze', async (req, res) => {
@@ -256,52 +390,34 @@ app.post('/api/analyze', async (req, res) => {
 
         // 解析AI返回的内容
         let result;
-        try {
-            // 尝试从返回内容中提取JSON
-            let content = data.answer || '';
-            console.log('清理前内容长度:', content.length);
-            
-            // 清理markdown代码块
-            content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            console.log('清理后内容长度:', content.length);
-            console.log('清理后内容预览:', content.substring(0, 500));
-            
-            // 尝试解析JSON
-            let parsed = JSON.parse(content);
-            console.log('JSON解析成功，原始字段:', Object.keys(parsed));
-            
-            // 适配Dify实际返回的格式，转换为前端期望的格式
-            result = convertDifyResponse(parsed, text);
-            console.log('转换后字段:', Object.keys(result));
-            console.log('issues数量:', result.issues ? result.issues.length : 0);
-        } catch (parseError) {
-            console.error('JSON解析失败:', parseError.message);
-            // 如果解析失败，尝试其他方式
-            const match = data.answer?.match(/\{[\s\S]*\}/);
-            if (match) {
-                try {
-                    let parsed = JSON.parse(match[0]);
-                    result = convertDifyResponse(parsed, text);
-                    console.log('正则提取后JSON解析成功');
-                } catch (e) {
-                    console.error('正则提取后仍解析失败:', e.message);
-                    result = {
-                        success: true,
-                        originalText: text,
-                        optimizedText: data.answer || text,
-                        issues: [],
-                        warning: 'AI返回格式解析失败，已返回原始内容'
-                    };
-                }
-            } else {
-                console.log('未找到JSON格式，直接返回AI回答');
+        const parseResult = parseDifyAnswer(data.answer);
+        
+        if (parseResult.success) {
+            try {
+                result = convertDifyResponse(parseResult.parsed, text);
+                console.log('转换后字段:', Object.keys(result));
+                console.log('issues数量:', result.issues ? result.issues.length : 0);
+            } catch (convertError) {
+                console.error('转换Dify响应失败:', convertError.message);
+                console.error('已解析的JSON keys:', Object.keys(parseResult.parsed || {}));
                 result = {
                     success: true,
                     originalText: text,
                     optimizedText: data.answer || text,
-                    issues: []
+                    issues: [],
+                    warning: 'AI返回数据格式不匹配，已返回原始内容'
                 };
             }
+        } else {
+            console.error('所有JSON解析策略均失败');
+            console.error('原始内容预览:', parseResult.rawContent);
+            result = {
+                success: true,
+                originalText: text,
+                optimizedText: data.answer || text,
+                issues: [],
+                warning: 'AI返回格式解析失败，已返回原始内容'
+            };
         }
 
         console.log('=== 最终返回结果 ===');
