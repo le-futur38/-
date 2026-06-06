@@ -218,6 +218,37 @@ function tryRepairJson(text) {
     return repaired.trim();
 }
 
+// ===================================
+// 文本清理工具函数
+// ===================================
+
+// 清理 AI 优化文本中的"print"等模型残留前缀
+// 例如 "print ပါး ခေါင်သည်!" → "ပါး ခေါင်သည်!"
+// 处理出现在文本开头 或 句首（标点/换行后）的"print "前缀
+function cleanOptimizedText(text) {
+    if (!text || typeof text !== 'string') return text;
+    
+    let cleaned = text;
+    let prev;
+    let iterations = 0;
+    const MAX_ITERATIONS = 5;
+    
+    // 反复清理，处理 "print print Hello" 这种嵌套
+    do {
+        prev = cleaned;
+        cleaned = cleaned.replace(
+            /(^|[。.!！？?\n\r，,；;：:])\s*print\s+(?=[a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u1000-\u109F\uA000-\uA4CF])/gi,
+            '$1'
+        );
+        iterations++;
+    } while (cleaned !== prev && iterations < MAX_ITERATIONS);
+    
+    // 最后清理文本开头的 "print "（兜底）
+    cleaned = cleaned.replace(/^\s*print\s+/i, '');
+    
+    return cleaned.trim();
+}
+
 // 多策略JSON解析
 function parseDifyAnswer(answer) {
     if (!answer) {
@@ -446,7 +477,7 @@ app.post('/api/analyze', async (req, res) => {
                 result = {
                     success: true,
                     originalText: text,
-                    optimizedText: data.answer || text,
+                    optimizedText: cleanOptimizedText(data.answer || text),
                     issues: [],
                     warning: 'AI返回数据格式不匹配，已返回原始内容'
                 };
@@ -457,7 +488,7 @@ app.post('/api/analyze', async (req, res) => {
             result = {
                 success: true,
                 originalText: text,
-                optimizedText: data.answer || text,
+                optimizedText: cleanOptimizedText(data.answer || text),
                 issues: [],
                 warning: 'AI返回格式解析失败，已返回原始内容'
             };
@@ -552,7 +583,7 @@ function convertDifyResponse(parsed, originalText) {
         return {
             success: true,
             originalText: originalText,
-            optimizedText: parsed.optimized_full_text || parsed.corrected_text || originalText,
+            optimizedText: cleanOptimizedText(parsed.optimized_full_text || parsed.corrected_text || originalText),
             issues: formattedIssues,
             // 新格式字段直通
             target_country: parsed.target_country,
@@ -563,7 +594,7 @@ function convertDifyResponse(parsed, originalText) {
             is_recommended_for_listing: parsed.is_recommended_for_listing,
             summary: parsed.summary,
             source_units: parsed.source_units || [],
-            optimized_full_text: parsed.optimized_full_text,
+            optimized_full_text: cleanOptimizedText(parsed.optimized_full_text),
             notes: parsed.notes
         };
     }
@@ -603,7 +634,7 @@ function convertDifyResponse(parsed, originalText) {
     return {
         success: true,
         originalText: originalText,
-        optimizedText: parsed.corrected_text || originalText,
+        optimizedText: cleanOptimizedText(parsed.corrected_text || originalText),
         issues: issues,
         isCompliant: parsed.is_compliant,
         inputLanguage: parsed.input_language,
