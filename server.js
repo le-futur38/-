@@ -133,6 +133,64 @@ app.get('/api/test', (req, res) => {
     });
 });
 
+// JSON解析调试端点 - 接受文本，返回每一步解析的结果
+app.post('/api/debug-parse', (req, res) => {
+    const { answer } = req.body;
+    if (!answer) {
+        return res.status(400).json({ error: '请提供 answer 字段' });
+    }
+    
+    const steps = [];
+    
+    // 第0步：清理
+    const cleaned = cleanDifyAnswer(answer);
+    steps.push({
+        step: 0,
+        name: 'cleanDifyAnswer',
+        inputLength: answer.length,
+        outputLength: cleaned.length,
+        outputPreview: cleaned.substring(0, 300)
+    });
+    
+    // 策略0.5: 智能截断
+    const lastBraceIdx = findLastBalancedBrace(cleaned);
+    if (lastBraceIdx !== -1 && lastBraceIdx < cleaned.length - 1) {
+        const truncated = cleaned.substring(0, lastBraceIdx + 1);
+        try {
+            const parsed = JSON.parse(truncated);
+            steps.push({ step: '0.5', name: '智能截断', success: true, parsed });
+            return res.json({ success: true, strategy: '0.5-truncated', parsed, steps });
+        } catch (e) {
+            steps.push({ step: '0.5', name: '智能截断', success: false, error: e.message });
+        }
+    }
+    
+    // 策略1: 直接解析
+    try {
+        const parsed = JSON.parse(cleaned);
+        steps.push({ step: 1, name: '直接解析', success: true, parsed });
+        return res.json({ success: true, strategy: '1-direct', parsed, steps });
+    } catch (e) {
+        steps.push({ step: 1, name: '直接解析', success: false, error: e.message });
+    }
+    
+    // 策略3: 平衡括号
+    const jsonStr = extractFirstJsonObject(cleaned);
+    if (jsonStr) {
+        try {
+            const parsed = JSON.parse(jsonStr);
+            steps.push({ step: 3, name: '平衡括号', success: true, parsed });
+            return res.json({ success: true, strategy: '3-balanced', parsed, steps });
+        } catch (e) {
+            steps.push({ step: 3, name: '平衡括号', success: false, error: e.message });
+        }
+    } else {
+        steps.push({ step: 3, name: '平衡括号', success: false, error: '未找到JSON对象' });
+    }
+    
+    return res.json({ success: false, error: '所有策略失败', steps });
+});
+
 // 从Dify获取历史消息（用于还原历史审查报告）
 app.get('/api/message', async (req, res) => {
     console.log('=== /api/message 收到请求 ===');
@@ -329,14 +387,26 @@ function cleanDifyAnswer(answer) {
     
     let cleaned = answer;
     
-    // 移除所有 <think>...</think> 块（多轮思考也支持）
+    // 0. 移除所有 <think>...</think> 块（多轮思考也支持）
     cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
     
-    // 移除 markdown 代码块标记
-    cleaned = cleaned.replace(/```json\n?/gi, '').replace(/```\n?/g, '');
+    // 0.5 移除其他思考标签
+    cleaned = cleaned.replace(/<(?:thinking|reasoning|reflection)>[\s\S]*?<\/(?:thinking|reasoning|reflection)>/gi, '');
     
-    // 移除开头的废话（"好的"、"让我分析一下"等）
-    cleaned = cleaned.replace(/^(好的|让我|我来|首先|下面)[，,。.\s\S]{0,50}?(?=\{|\[|$)/, '');
+    // 1. 移除 markdown 代码块标记（json/JSON/无语言标记都处理）
+    cleaned = cleaned.replace(/```(?:json|JSON)?\n?/g, '').replace(/```\n?/g, '');
+    
+    // 2. 移除常见的引导语（不区分大小写）
+    cleaned = cleaned.replace(/^(好的|让我|我来|首先|下面|这是|以下是|根据您的要求|以下是审查结果)[，,。.\s\S]{0,100}?(?=\{|\[)/m, '');
+    
+    // 3. 移除可能的控制字符（保留中文、英文、数字、常见标点、Unicode字符）
+    cleaned = cleaned.replace(/[\u200B-\u200D\uFEFF\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+    
+    // 4. 智能截断：只保留从第一个 { 开始到结尾的内容
+    const firstBrace = cleaned.indexOf('{');
+    if (firstBrace > 0) {
+        cleaned = cleaned.substring(firstBrace);
+    }
     
     return cleaned.trim();
 }
@@ -351,6 +421,20 @@ function parseDifyAnswer(answer) {
     // 第0步：先清理掉 think 思考块（关键！否则解析后还可能残留）
     let content = cleanDifyAnswer(answer);
     console.log('[JSON解析] 清理think后长度:', content.length);
+    
+    // 策略0.5: 智能截断（如果清理后还有JSON之后的尾随文本）
+    // 从最后一个 } 开始截断，但需要平衡字符串
+    const lastBraceIdx = findLastBalancedBrace(content);
+    if (lastBraceIdx !== -1 && lastBraceIdx < content.length - 1) {
+        const truncated = content.substring(0, lastBraceIdx + 1);
+        try {
+            let parsed = JSON.parse(truncated);
+            console.log('[JSON解析] 策略0.5成功（智能截断）');
+            return { success: true, parsed, content: truncated };
+        } catch (e05) {
+            console.log('[JSON解析] 策略0.5失败:', e05.message);
+        }
+    }
     
     // 策略1: 直接解析
     try {
@@ -423,11 +507,53 @@ function parseDifyAnswer(answer) {
     }
     
     // 全部失败：返回清理后的内容（绝不能包含 think 块）
+    console.log('[JSON解析] 全部失败！清理后内容前200字符:', content.substring(0, 200));
     return {
         success: false,
         error: '所有JSON解析策略均失败',
         rawContent: content.substring(0, 1000)
     };
+}
+
+// 找到最后一个平衡的 } 位置（处理字符串、转移字符）
+function findLastBalancedBrace(text) {
+    if (!text) return -1;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let lastValidIdx = -1;
+    
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        
+        if (c === '\\') {
+            escape = true;
+            continue;
+        }
+        
+        if (c === '"' && !escape) {
+            inString = !inString;
+            continue;
+        }
+        
+        if (inString) continue;
+        
+        if (c === '{') {
+            depth++;
+        } else if (c === '}') {
+            depth--;
+            if (depth === 0) {
+                lastValidIdx = i;
+            }
+        }
+    }
+    
+    return lastValidIdx;
 }
 
 // API代理端点
