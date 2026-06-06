@@ -503,7 +503,8 @@ function analyzeText() {
             summary: result.summary,
             source_units: result.source_units,
             optimized_full_text: result.optimized_full_text || result.corrected_text,
-            notes: result.notes
+            notes: result.notes,
+            mode: result.mode || currentMode  // 关键：传递模式字段
         };
         
         // 保存到历史记录（同时返回新记录的 id 用于本地缓存）
@@ -633,7 +634,8 @@ function loadReviewReport(recordId) {
                 summary: result.summary,
                 source_units: result.source_units,
                 optimized_full_text: result.optimized_full_text || result.corrected_text,
-                notes: result.notes
+                notes: result.notes,
+                mode: result.mode || record.mode || 'pro'  // 关键：传递模式字段
             }
         }, 'Dify');
     })
@@ -962,6 +964,12 @@ function displayIssuesList(issues, extra) {
         const issueEl = document.createElement('div');
         const risk = getRisk(issue);
         issueEl.className = `issue-item ${risk}-risk`;
+        // 标记当前 issue 所属模式（CSS 可据此隐藏/显示字段）
+        if (extra.mode === 'quick') {
+            issueEl.dataset.mode = 'quick';
+        } else {
+            issueEl.dataset.mode = 'pro';
+        }
         
         // 兼容新旧字段
         const exactQuote = issue.exact_quote || issue.wrongWord || issue.matchedWord || '';
@@ -977,20 +985,24 @@ function displayIssuesList(issues, extra) {
         
         const riskEmoji = risk === 'high' ? '🔴 ' : risk === 'medium' ? '🟡 ' : '🟢 ';
         
+        // 快速版：精简展示（隐藏 RAG 证据、文化背景、问题位置、原文解析）
+        // 专业版：完整展示（保留全部字段）
+        const isQuick = extra.mode === 'quick';
+        
         issueEl.innerHTML = `
             <div class="issue-header" onclick="toggleIssue(this)">
                 <div class="issue-title">
-                    <span class="issue-type" style="color: var(--${risk}-risk)">${riskEmoji}${sourceUnitId ? '['+sourceUnitId+'] ' : ''}${escapeHtml(riskType)}</span>
+                    <span class="issue-type" style="color: var(--${risk}-risk)">${riskEmoji}${isQuick ? '风险提示' : (sourceUnitId ? '['+sourceUnitId+'] ' : '') + escapeHtml(riskType)}</span>
                 </div>
                 <span class="issue-risk">${getRiskLabel(risk)} <i class="fas fa-chevron-down"></i></span>
             </div>
             <div class="issue-content collapsed">
                 ${exactQuote ? `<p><strong>问题原文：</strong><span class="quote-text">"${escapeHtml(exactQuote)}"</span>${quoteMeaning ? ` <span class="quote-meaning">（${escapeHtml(quoteMeaning)}）</span>` : ''}</p>` : ''}
-                ${problemPosition ? `<p><strong>问题位置：</strong>${escapeHtml(problemPosition)}</p>` : ''}
+                ${!isQuick && problemPosition ? `<p><strong>问题位置：</strong>${escapeHtml(problemPosition)}</p>` : ''}
                 <p><strong>风险等级：</strong>${riskEmoji}${getRiskLabel(risk)}</p>
-                ${culturalBackground ? `<p><strong>文化背景：</strong>${escapeHtml(culturalBackground)}</p>` : ''}
-                ${reason ? `<p><strong>问题原因：</strong>${escapeHtml(reason)}</p>` : ''}
-                ${ragEvidence ? `<details class="rag-details"><summary>RAG证据参考</summary><p>${escapeHtml(ragEvidence)}</p></details>` : ''}
+                ${!isQuick && culturalBackground ? `<p><strong>文化背景：</strong>${escapeHtml(culturalBackground)}</p>` : ''}
+                ${reason ? `<p><strong>${isQuick ? '问题原因' : '问题原因'}：</strong>${escapeHtml(reason)}</p>` : ''}
+                ${!isQuick && ragEvidence ? `<details class="rag-details"><summary>RAG证据参考</summary><p>${escapeHtml(ragEvidence)}</p></details>` : ''}
                 <div class="suggestion-box">
                     <p><strong>修改建议：</strong>${escapeHtml(modificationSuggestion)}</p>
                 </div>

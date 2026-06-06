@@ -230,16 +230,19 @@ app.get('/api/message', async (req, res) => {
             });
         }
         
-        console.log('[Dify消息API] 解析成功，JSON字段:', Object.keys(parseResult.parsed));
+        // 提取原文（去掉系统提示词前后缀）
+        const originalText = message.query 
+            ? message.query.replace(/^请审查以下出口到.*?市场.*?文案：\n\n/, '').replace(/\n\n请按要求返回JSON格式的审查结果。$/, '').trim()
+            : '';
         
-        // 转换为前端期望的格式
-        const originalText = message.query ? message.query.replace(/^请审查以下出口到.*?市场.*?文案：\n\n/, '').replace(/\n\n请按要求返回JSON格式的审查结果。$/, '') : '';
-        const result = convertDifyResponse(parseResult.parsed, originalText);
+        // 转换为前端期望的格式（传入mode，区分专业版/快速版）
+        const result = convertDifyResponse(parseResult.parsed, originalText, currentMode);
         result.conversation_id = conversation_id;
         result.message_id = message.id;
         result.mode = currentMode;
         result.modeName = difyConfig.name;
         
+        console.log('[Dify消息API] 解析成功，JSON字段:', Object.keys(parseResult.parsed));
         console.log('[Dify消息API] 转换完成，issues数量:', result.issues?.length || 0);
         console.log('=== /api/message 成功返回 ===');
         
@@ -570,7 +573,7 @@ app.post('/api/analyze', async (req, res) => {
         
         if (parseResult.success) {
             try {
-                result = convertDifyResponse(parseResult.parsed, text);
+                result = convertDifyResponse(parseResult.parsed, text, currentMode);
                 console.log('转换后字段:', Object.keys(result));
                 console.log('issues数量:', result.issues ? result.issues.length : 0);
             } catch (convertError) {
@@ -642,7 +645,9 @@ app.post('/api/analyze', async (req, res) => {
 });
 
 // 将Dify返回的JSON转换为前端期望的格式
-function convertDifyResponse(parsed, originalText) {
+// mode: 'pro' = 专业版（包含RAG证据、文化背景等完整字段）
+//       'quick' = 快速版（精简格式，不含RAG/文化背景/问题位置等）
+function convertDifyResponse(parsed, originalText, mode = 'pro') {
     // 新的Dify格式：包含issues数组和详细字段
     if (parsed.issues && Array.isArray(parsed.issues)) {
         // 转换issues为前端友好格式，同时保留原始字段
@@ -661,6 +666,34 @@ function convertDifyResponse(parsed, originalText) {
                 }
             }
             
+            // 快速版：保留精简字段，专业版：保留全部RAG字段
+            if (mode === 'quick') {
+                return {
+                    // 兼容旧字段（供前端兼容显示）
+                    type: '文化合规',  // 快速版不提供 risk_type
+                    matchedWord: issue.exact_quote || '',
+                    riskLevel: riskLevel || 'medium',
+                    description: issue.reason || '',
+                    suggestion: '请根据描述修改相关文案',
+                    position: -1,
+                    // 新字段（精简版）
+                    issue_id: issue.issue_id,
+                    exact_quote: issue.exact_quote,
+                    quote_meaning_zh: issue.quote_meaning_zh,
+                    risk_level: issue.risk_level,
+                    reason: issue.reason,
+                    suggested_rewrite: issue.suggested_rewrite,
+                    // 快速版不含的字段：全部置空
+                    source_unit_id: '',
+                    problem_position: '',
+                    risk_type: '',
+                    cultural_background: '',
+                    rag_evidence: '',
+                    modification_suggestion: ''
+                };
+            }
+            
+            // 专业版：保留全部字段
             return {
                 // 兼容旧字段（供前端兼容显示）
                 type: issue.risk_type || '文化合规',
@@ -697,10 +730,13 @@ function convertDifyResponse(parsed, originalText) {
             rewrite_language: parsed.rewrite_language,
             overall_risk_level: parsed.overall_risk_level,
             is_recommended_for_listing: parsed.is_recommended_for_listing,
-            summary: parsed.summary,
-            source_units: parsed.source_units || [],
+            // 快速版没有 summary/source_units/notes，统一置空
+            summary: mode === 'quick' ? '' : (parsed.summary || ''),
+            source_units: mode === 'quick' ? [] : (parsed.source_units || []),
             optimized_full_text: parsed.optimized_full_text,
-            notes: parsed.notes
+            notes: mode === 'quick' ? '' : (parsed.notes || ''),
+            // 标识当前模式（供前端决定显示哪些字段）
+            mode: mode
         };
     }
     
@@ -750,7 +786,8 @@ function convertDifyResponse(parsed, originalText) {
         is_recommended_for_listing: parsed.is_compliant !== false,
         summary: parsed.issues_in_chinese || '审查完成',
         source_units: [],
-        notes: ''
+        notes: '',
+        mode: mode
     };
 }
 
