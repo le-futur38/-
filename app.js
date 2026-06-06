@@ -1076,6 +1076,16 @@ function renderCases() {
     });
 }
 
+// 清空历史记录的确认对话框
+function confirmClearHistory() {
+    if (confirm('确定要清空所有历史记录吗？\n\n该操作会清除本地保存的所有审查记录和报告缓存，且无法恢复。')) {
+        clearAllHistoryRecords();
+        HISTORY_RECORDS = [];
+        renderHistoryRecords();
+        showToast('已清空所有历史记录');
+    }
+}
+
 // 渲染历史会话记录
 function renderHistoryRecords() {
     const container = document.getElementById('review-history');
@@ -1084,6 +1094,30 @@ function renderHistoryRecords() {
     if (!container) return;
     
     container.innerHTML = '';
+    
+    // 空状态提示
+    if (HISTORY_RECORDS.length === 0) {
+        container.innerHTML = `
+            <div class="history-empty-state">
+                <i class="fas fa-inbox" style="font-size: 48px; color: #cbd5e1; margin-bottom: 16px;"></i>
+                <p style="color: #64748b; text-align: center; margin: 0;">还没有审查记录</p>
+                <p style="color: #94a3b8; text-align: center; font-size: 13px; margin-top: 8px;">完成一次审查后，记录会自动保存在这里</p>
+            </div>
+        `;
+        if (countElement) countElement.textContent = '0';
+        return;
+    }
+    
+    // 顶部添加"清空记录"按钮
+    const clearBtn = document.createElement('div');
+    clearBtn.className = 'history-clear-bar';
+    clearBtn.innerHTML = `
+        <span class="history-clear-info">共 ${HISTORY_RECORDS.length} 条记录（已自动保存到本地）</span>
+        <button class="history-clear-btn" onclick="confirmClearHistory()">
+            <i class="fas fa-trash-alt"></i> 清空记录
+        </button>
+    `;
+    container.appendChild(clearBtn);
     
     HISTORY_RECORDS.forEach(record => {
         const item = document.createElement('div');
@@ -1183,6 +1217,9 @@ function saveToHistory(text, country, issues, productType, conversationId, messa
         HISTORY_RECORDS.pop();
     }
     
+    // 持久化到 localStorage（这样刷新页面或重新打开浏览器都不会丢失）
+    saveHistoryRecordsToStorage(HISTORY_RECORDS);
+    
     // 更新历史记录显示（如果当前在个人中心页面）
     if (currentState.currentView === 'profile') {
         renderHistoryRecords();
@@ -1193,11 +1230,57 @@ function saveToHistory(text, country, issues, productType, conversationId, messa
 }
 
 // ===================================
-// 本地缓存（localStorage） - Dify API 失败时的降级方案
+// 本地缓存（localStorage） - 历史记录持久化 + Dify API 失败时的降级方案
 // ===================================
 
 const REPORT_CACHE_PREFIX = 'report_cache_';
 const REPORT_CACHE_EXPIRY_DAYS = 30; // 30天有效期
+const HISTORY_RECORDS_KEY = 'history_records_list';
+
+// 页面加载时，从 localStorage 恢复历史记录
+function loadHistoryRecordsFromStorage() {
+    try {
+        const raw = localStorage.getItem(HISTORY_RECORDS_KEY);
+        if (!raw) {
+            console.log('[历史记录] localStorage 中没有保存的记录');
+            return [];
+        }
+        const records = JSON.parse(raw);
+        console.log('[历史记录] 从 localStorage 恢复', records.length, '条记录');
+        return records;
+    } catch (e) {
+        console.warn('[历史记录] 从 localStorage 读取失败:', e.message);
+        return [];
+    }
+}
+
+// 保存历史记录列表到 localStorage
+function saveHistoryRecordsToStorage(records) {
+    try {
+        localStorage.setItem(HISTORY_RECORDS_KEY, JSON.stringify(records));
+        console.log('[历史记录] 已保存', records.length, '条记录到 localStorage');
+    } catch (e) {
+        console.warn('[历史记录] 保存到 localStorage 失败:', e.message);
+    }
+}
+
+// 清除所有历史记录（包括缓存）
+function clearAllHistoryRecords() {
+    try {
+        // 清除记录列表
+        localStorage.removeItem(HISTORY_RECORDS_KEY);
+        // 清除所有报告缓存
+        const keys = Object.keys(localStorage);
+        for (const key of keys) {
+            if (key.startsWith(REPORT_CACHE_PREFIX)) {
+                localStorage.removeItem(key);
+            }
+        }
+        console.log('[历史记录] 已清除所有记录和缓存');
+    } catch (e) {
+        console.warn('[历史记录] 清除失败:', e.message);
+    }
+}
 
 function saveReportToLocalCache(recordId, report) {
     try {
@@ -1496,6 +1579,13 @@ function initEventListeners() {
 // ===================================
 
 function init() {
+    // 优先从 localStorage 恢复历史记录（解决刷新/重新打开就丢失的问题）
+    const savedRecords = loadHistoryRecordsFromStorage();
+    if (savedRecords.length > 0) {
+        HISTORY_RECORDS = savedRecords;
+        console.log('[初始化] 已恢复', HISTORY_RECORDS.length, '条历史记录');
+    }
+    
     updateCharCount();
     initEventListeners();
     renderCases();
