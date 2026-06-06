@@ -320,6 +320,24 @@ function tryRepairJson(text) {
 }
 
 // 多策略JSON解析
+// 清理 AI 返回内容：移除 <think>...</think> 思考块，只保留正文
+function cleanDifyAnswer(answer) {
+    if (!answer) return '';
+    
+    let cleaned = answer;
+    
+    // 移除所有 <think>...</think> 块（多轮思考也支持）
+    cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    
+    // 移除 markdown 代码块标记
+    cleaned = cleaned.replace(/```json\n?/gi, '').replace(/```\n?/g, '');
+    
+    // 移除开头的废话（"好的"、"让我分析一下"等）
+    cleaned = cleaned.replace(/^(好的|让我|我来|首先|下面)[，,。.\s\S]{0,50}?(?=\{|\[|$)/, '');
+    
+    return cleaned.trim();
+}
+
 function parseDifyAnswer(answer) {
     if (!answer) {
         return { success: false, error: 'AI返回内容为空' };
@@ -327,8 +345,9 @@ function parseDifyAnswer(answer) {
     
     console.log('[JSON解析] answer长度:', answer.length);
     
-    // 清理markdown代码块
-    let content = answer.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    // 第0步：先清理掉 think 思考块（关键！否则解析后还可能残留）
+    let content = cleanDifyAnswer(answer);
+    console.log('[JSON解析] 清理think后长度:', content.length);
     
     // 策略1: 直接解析
     try {
@@ -339,7 +358,7 @@ function parseDifyAnswer(answer) {
         console.log('[JSON解析] 策略1失败:', e1.message);
     }
     
-    // 策略2: 提取并移除 <think> 块后再解析
+    // 策略2: 再次尝试移除 <think> 块后解析（兜底）
     const thinkStart = content.indexOf('<think>');
     const thinkEnd = content.indexOf('</think>');
     if (thinkStart !== -1 && thinkEnd !== -1 && thinkEnd > thinkStart) {
@@ -400,7 +419,7 @@ function parseDifyAnswer(answer) {
         }
     }
     
-    // 全部失败：返回原始内容供前端显示
+    // 全部失败：返回清理后的内容（绝不能包含 think 块）
     return {
         success: false,
         error: '所有JSON解析策略均失败',
@@ -560,9 +579,9 @@ app.post('/api/analyze', async (req, res) => {
                 result = {
                     success: true,
                     originalText: text,
-                    optimizedText: data.answer || text,
+                    optimizedText: cleanDifyAnswer(data.answer) || text,  // 关键：用清理后的内容
                     issues: [],
-                    warning: 'AI返回数据格式不匹配，已返回原始内容'
+                    warning: 'AI返回数据格式不匹配，已返回清理后的内容'
                 };
             }
         } else {
@@ -571,9 +590,9 @@ app.post('/api/analyze', async (req, res) => {
             result = {
                 success: true,
                 originalText: text,
-                optimizedText: data.answer || text,
+                optimizedText: cleanDifyAnswer(data.answer) || text,  // 关键：用清理后的内容
                 issues: [],
-                warning: 'AI返回格式解析失败，已返回原始内容'
+                warning: 'AI返回格式解析失败，已返回清理后的内容'
             };
         }
 
