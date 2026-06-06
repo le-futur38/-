@@ -782,10 +782,8 @@ function displayResult(original, optimized, issues, extra) {
     // 显示问题列表
     displayIssuesList(issues, extra);
     
-    // 显示备注
-    if (extra.notes) {
-        displayNotes(extra.notes);
-    }
+    // 显示备注（无论是否有 notes 都要调用，确保清空旧的备注元素）
+    displayNotes(extra.notes);
 }
 
 // 显示审查摘要
@@ -878,7 +876,8 @@ function displayNotes(notes) {
         oldEl.remove();
     }
     
-    if (!notes) {
+    // 没有 notes 或仅为空白时直接返回（不再创建新元素）
+    if (!notes || !String(notes).trim()) {
         return;
     }
     
