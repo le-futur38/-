@@ -225,6 +225,24 @@
                 <p>输入您的产品文案，AI将自动识别潜在风险并提供优化建议</p>
             </div>
 
+            <!-- 专业版 / 快速版 切换 -->
+            <div class="mode-selector">
+                <div class="mode-option active" data-mode="pro" onclick="switchMode('pro')">
+                    <i class="fas fa-crown"></i>
+                    <div class="mode-text">
+                        <span class="mode-name">专业版</span>
+                        <span class="mode-desc">深度分析 · 8维度</span>
+                    </div>
+                </div>
+                <div class="mode-option" data-mode="quick" onclick="switchMode('quick')">
+                    <i class="fas fa-bolt"></i>
+                    <div class="mode-text">
+                        <span class="mode-name">快速版</span>
+                        <span class="mode-desc">极速响应 · 重点扫描</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="content-wrapper">
                 <!-- 输入区域 -->
                 <div class="input-section">

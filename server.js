@@ -15,8 +15,52 @@ app.get('/api/health', (req, res) => {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         env: {
-            DIFY_API_URL: process.env.DIFY_API_URL || '未设置',
-            DIFY_API_KEY_EXISTS: !!process.env.DIFY_API_KEY
+            DIFY_API_URL_PRO: getDifyConfig('pro').url,
+            DIFY_API_KEY_PRO_EXISTS: !!getDifyConfig('pro').key,
+            DIFY_API_URL_QUICK: getDifyConfig('quick').url,
+            DIFY_API_KEY_QUICK_EXISTS: !!getDifyConfig('quick').key
+        }
+    });
+});
+
+// 根据模式返回对应的 Dify 配置（API Key 绝不出现在前端）
+function getDifyConfig(mode) {
+    if (mode === 'quick') {
+        return {
+            mode: 'quick',
+            name: '快速版',
+            url: process.env.DIFY_API_URL_QUICK || process.env.DIFY_API_URL || 'https://api.dify.ai/v1',
+            key: process.env.DIFY_API_KEY_QUICK || process.env.DIFY_API_KEY
+        };
+    }
+    // 默认专业版
+    return {
+        mode: 'pro',
+        name: '专业版',
+        url: process.env.DIFY_API_URL_PRO || process.env.DIFY_API_URL || 'https://api.dify.ai/v1',
+        key: process.env.DIFY_API_KEY_PRO || process.env.DIFY_API_KEY
+    };
+}
+
+// 获取可用的模式列表（用于前端显示）
+app.get('/api/modes', (req, res) => {
+    const proConfig = getDifyConfig('pro');
+    const quickConfig = getDifyConfig('quick');
+    res.json({
+        success: true,
+        modes: {
+            pro: {
+                name: proConfig.name,
+                available: !!proConfig.key,
+                description: '深度分析 · 8维度',
+                features: ['宗教/文化/政治敏感词检测', '颜色禁忌分析', '王室相关内容识别', '语言规范校验', '产品认证要求', '广告法规定', '纺织品种类专项检查']
+            },
+            quick: {
+                name: quickConfig.name,
+                available: !!quickConfig.key,
+                description: '极速响应 · 重点扫描',
+                features: ['核心敏感词检测', '明显违规项标记', '快速合规建议']
+            }
         }
     });
 });
@@ -49,7 +93,9 @@ app.get('/api/message', async (req, res) => {
     console.log('=== /api/message 收到请求 ===');
     console.log('query参数:', JSON.stringify(req.query));
     
-    const { conversation_id, message_id } = req.query;
+    const { conversation_id, message_id, mode } = req.query;
+    const currentMode = mode === 'quick' ? 'quick' : 'pro';
+    const difyConfig = getDifyConfig(currentMode);
     
     if (!conversation_id) {
         return res.status(400).json({
@@ -58,15 +104,23 @@ app.get('/api/message', async (req, res) => {
         });
     }
     
+    if (!difyConfig.key) {
+        return res.status(503).json({
+            success: false,
+            error: `${difyConfig.name} 暂未配置 API Key`
+        });
+    }
+    
     try {
         // 调用 Dify GET /v1/messages API
-        const difyUrl = `${process.env.DIFY_API_URL}/messages?conversation_id=${encodeURIComponent(conversation_id)}&user=web-user&limit=20`;
+        const difyUrl = `${difyConfig.url}/messages?conversation_id=${encodeURIComponent(conversation_id)}&user=web-user&limit=20`;
         console.log('[Dify消息API] 请求URL:', difyUrl);
+        console.log('[Dify消息API] 模式:', currentMode, '(', difyConfig.name, ')');
         
         const response = await fetch(difyUrl, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${process.env.DIFY_API_KEY}`,
+                'Authorization': `Bearer ${difyConfig.key}`,
                 'Accept': 'application/json'
             }
         });
@@ -138,6 +192,8 @@ app.get('/api/message', async (req, res) => {
         const result = convertDifyResponse(parseResult.parsed, originalText);
         result.conversation_id = conversation_id;
         result.message_id = message.id;
+        result.mode = currentMode;
+        result.modeName = difyConfig.name;
         
         console.log('[Dify消息API] 转换完成，issues数量:', result.issues?.length || 0);
         console.log('=== /api/message 成功返回 ===');
@@ -216,37 +272,6 @@ function tryRepairJson(text) {
     repaired = repaired.replace(/```json\n?/g, '').replace(/```\n?/g, '');
     
     return repaired.trim();
-}
-
-// ===================================
-// 文本清理工具函数
-// ===================================
-
-// 清理 AI 优化文本中的"print"等模型残留前缀
-// 例如 "print ပါး ခေါင်သည်!" → "ပါး ခေါင်သည်!"
-// 处理出现在文本开头 或 句首（标点/换行后）的"print "前缀
-function cleanOptimizedText(text) {
-    if (!text || typeof text !== 'string') return text;
-    
-    let cleaned = text;
-    let prev;
-    let iterations = 0;
-    const MAX_ITERATIONS = 5;
-    
-    // 反复清理，处理 "print print Hello" 这种嵌套
-    do {
-        prev = cleaned;
-        cleaned = cleaned.replace(
-            /(^|[。.!！？?\n\r，,；;：:])\s*print\s+(?=[a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u1000-\u109F\uA000-\uA4CF])/gi,
-            '$1'
-        );
-        iterations++;
-    } while (cleaned !== prev && iterations < MAX_ITERATIONS);
-    
-    // 最后清理文本开头的 "print "（兜底）
-    cleaned = cleaned.replace(/^\s*print\s+/i, '');
-    
-    return cleaned.trim();
 }
 
 // 多策略JSON解析
@@ -346,17 +371,28 @@ app.post('/api/analyze', async (req, res) => {
     try {
         console.log(`\n=== [${requestId}] /api/analyze 收到请求 ===`);
         console.log(`[${requestId}] 时间:`, new Date().toISOString());
-        const { text, country, productType } = req.body;
+        const { text, country, productType, mode } = req.body;
+        const currentMode = mode === 'quick' ? 'quick' : 'pro';
+        const difyConfig = getDifyConfig(currentMode);
         console.log(`[${requestId}] text长度:`, text?.length || 0);
         console.log(`[${requestId}] country:`, country);
         console.log(`[${requestId}] productType:`, productType);
-        console.log(`[${requestId}] DIFY_API_URL:`, process.env.DIFY_API_URL);
-        console.log(`[${requestId}] DIFY_API_KEY exists:`, !!process.env.DIFY_API_KEY);
+        console.log(`[${requestId}] 模式:`, currentMode, '(', difyConfig.name, ')');
+        console.log(`[${requestId}] DIFY_API_URL:`, difyConfig.url);
+        console.log(`[${requestId}] DIFY_API_KEY exists:`, !!difyConfig.key);
         
         if (!text || !country) {
             return res.status(400).json({ 
                 success: false, 
                 error: '缺少必要参数：text 或 country',
+                requestId
+            });
+        }
+        
+        if (!difyConfig.key) {
+            return res.status(503).json({ 
+                success: false, 
+                error: `${difyConfig.name} 暂未配置 API Key，请联系管理员`,
                 requestId
             });
         }
@@ -437,8 +473,8 @@ app.post('/api/analyze', async (req, res) => {
 
         // 调用Dify API，使用流式模式避免Cloudflare 60秒超时切断
         const difyResponse = await callDifyWithRetry({
-            url: `${process.env.DIFY_API_URL}/chat-messages`,
-            apiKey: process.env.DIFY_API_KEY,
+            url: `${difyConfig.url}/chat-messages`,
+            apiKey: difyConfig.key,
             body: {
                 query: `请审查以下出口到${countryName}市场的【${textileType}】类纺织品文案：\n\n${text}\n\n请按要求返回JSON格式的审查结果。`,
                 user: 'web-user',
@@ -477,7 +513,7 @@ app.post('/api/analyze', async (req, res) => {
                 result = {
                     success: true,
                     originalText: text,
-                    optimizedText: cleanOptimizedText(data.answer || text),
+                    optimizedText: data.answer || text,
                     issues: [],
                     warning: 'AI返回数据格式不匹配，已返回原始内容'
                 };
@@ -488,7 +524,7 @@ app.post('/api/analyze', async (req, res) => {
             result = {
                 success: true,
                 originalText: text,
-                optimizedText: cleanOptimizedText(data.answer || text),
+                optimizedText: data.answer || text,
                 issues: [],
                 warning: 'AI返回格式解析失败，已返回原始内容'
             };
@@ -501,8 +537,11 @@ app.post('/api/analyze', async (req, res) => {
         result.conversation_id = data.conversation_id || '';
         result.message_id = data.message_id || '';
         result.requestId = requestId;
+        result.mode = currentMode;
+        result.modeName = difyConfig.name;
         console.log(`[${requestId}] 返回 conversation_id:`, result.conversation_id);
         console.log(`[${requestId}] 返回 message_id:`, result.message_id);
+        console.log(`[${requestId}] 返回 mode:`, result.mode, '(', result.modeName, ')');
         const duration = Date.now() - startTime;
         console.log(`[${requestId}] === /api/analyze 成功返回 === 总耗时: ${duration}ms`);
         res.json(result);
@@ -583,7 +622,7 @@ function convertDifyResponse(parsed, originalText) {
         return {
             success: true,
             originalText: originalText,
-            optimizedText: cleanOptimizedText(parsed.optimized_full_text || parsed.corrected_text || originalText),
+            optimizedText: parsed.optimized_full_text || parsed.corrected_text || originalText,
             issues: formattedIssues,
             // 新格式字段直通
             target_country: parsed.target_country,
@@ -594,7 +633,7 @@ function convertDifyResponse(parsed, originalText) {
             is_recommended_for_listing: parsed.is_recommended_for_listing,
             summary: parsed.summary,
             source_units: parsed.source_units || [],
-            optimized_full_text: cleanOptimizedText(parsed.optimized_full_text),
+            optimized_full_text: parsed.optimized_full_text,
             notes: parsed.notes
         };
     }
@@ -634,7 +673,7 @@ function convertDifyResponse(parsed, originalText) {
     return {
         success: true,
         originalText: originalText,
-        optimizedText: cleanOptimizedText(parsed.corrected_text || originalText),
+        optimizedText: parsed.corrected_text || originalText,
         issues: issues,
         isCompliant: parsed.is_compliant,
         inputLanguage: parsed.input_language,

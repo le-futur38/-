@@ -5,7 +5,8 @@ let currentState = {
     optimizedText: '',
     issues: [],
     currentView: 'main',
-    lastView: 'main'  // 记录上一个页面，用于返回
+    lastView: 'main',  // 记录上一个页面，用于返回
+    currentMode: 'pro'  // 'pro' = 专业版, 'quick' = 快速版
 };
 
 // DOM元素缓存
@@ -462,7 +463,8 @@ function analyzeText() {
         body: JSON.stringify({
             text: text,
             country: selectedCountry,
-            productType: selectedTextile
+            productType: selectedTextile,
+            mode: currentState.currentMode  // 告诉后端用哪个模式
         })
     })
     .then(response => {
@@ -589,8 +591,9 @@ function loadReviewReport(recordId) {
     // 显示加载状态
     showToast('正在从 Dify 还原审查报告...');
     
-    // 调用后端API获取历史消息
-    const url = `https://airy-respect-production.up.railway.app/api/message?conversation_id=${encodeURIComponent(record.conversationId)}${record.messageId ? '&message_id=' + encodeURIComponent(record.messageId) : ''}`;
+    // 调用后端API获取历史消息 - 用记录保存时的 mode（如果存在），否则用当前模式
+    const restoreMode = record.mode || currentState.currentMode;
+    const url = `https://airy-respect-production.up.railway.app/api/message?conversation_id=${encodeURIComponent(record.conversationId)}${record.messageId ? '&message_id=' + encodeURIComponent(record.messageId) : ''}&mode=${restoreMode}`;
     
     fetch(url, {
         method: 'GET',
@@ -1086,6 +1089,37 @@ function confirmClearHistory() {
     }
 }
 
+// ===================================
+// 模式切换（专业版 / 快速版）
+// ===================================
+
+function switchMode(mode) {
+    if (mode !== 'pro' && mode !== 'quick') return;
+    if (currentState.currentMode === mode) return;
+    
+    currentState.currentMode = mode;
+    
+    // 保存到 localStorage
+    try {
+        localStorage.setItem('analyze_mode', mode);
+    } catch (e) {
+        console.warn('[模式] 保存到 localStorage 失败:', e.message);
+    }
+    
+    // 更新 UI
+    document.querySelectorAll('.mode-option').forEach(el => {
+        el.classList.toggle('active', el.dataset.mode === mode);
+    });
+    
+    // 提示
+    const modeName = mode === 'pro' ? '专业版' : '快速版';
+    const desc = mode === 'pro' 
+        ? '深度分析 · 8维度' 
+        : '极速响应 · 重点扫描';
+    showToast(`已切换到 ${modeName}（${desc}）`);
+    console.log('[模式] 切换到:', modeName);
+}
+
 // 渲染历史会话记录
 function renderHistoryRecords() {
     const container = document.getElementById('review-history');
@@ -1127,6 +1161,11 @@ function renderHistoryRecords() {
         const issueText = record.issueCount > 0 ? `发现 ${record.issueCount} 个问题` : '未发现问题';
         const productText = record.productType ? ` · ${record.productType}` : '';
         const demoBadge = record.isDemo ? '<span class="demo-badge">演示</span>' : '';
+        const modeBadge = record.mode === 'quick' 
+            ? '<span class="mode-badge quick">⚡快速版</span>' 
+            : record.mode === 'pro' 
+            ? '<span class="mode-badge pro">👑专业版</span>' 
+            : '';
         
         // 状态标签
         const statusBadge = record.status === 'safe' 
@@ -1142,6 +1181,7 @@ function renderHistoryRecords() {
                 <div class="history-header">
                     <span class="history-country">${record.countryName}</span>
                     ${statusBadge}
+                    ${modeBadge}
                     ${demoBadge}
                 </div>
                 <p class="history-text">${escapeHtml(record.text)}</p>
@@ -1206,7 +1246,9 @@ function saveToHistory(text, country, issues, productType, conversationId, messa
         statusText: statusText,
         isDemo: false,
         conversationId: conversationId || null,
-        messageId: messageId || null
+        messageId: messageId || null,
+        mode: currentState.currentMode,
+        modeName: currentState.currentMode === 'pro' ? '专业版' : '快速版'
     };
     
     // 添加到历史记录开头（最新的在最前面）
@@ -1584,6 +1626,20 @@ function init() {
     if (savedRecords.length > 0) {
         HISTORY_RECORDS = savedRecords;
         console.log('[初始化] 已恢复', HISTORY_RECORDS.length, '条历史记录');
+    }
+    
+    // 恢复上次选择的模式
+    try {
+        const savedMode = localStorage.getItem('analyze_mode');
+        if (savedMode === 'pro' || savedMode === 'quick') {
+            currentState.currentMode = savedMode;
+            document.querySelectorAll('.mode-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.mode === savedMode);
+            });
+            console.log('[初始化] 已恢复模式:', savedMode);
+        }
+    } catch (e) {
+        console.warn('[初始化] 恢复模式失败:', e.message);
     }
     
     updateCharCount();

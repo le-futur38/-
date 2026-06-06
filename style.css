@@ -186,6 +186,94 @@ body {
     box-sizing: border-box;
 }
 
+/* 专业版 / 快速版 切换器 */
+.mode-selector {
+    display: flex;
+    gap: var(--spacing-md);
+    max-width: 800px;
+    margin: 0 auto var(--spacing-xl);
+    padding: 0 var(--spacing-md);
+}
+
+.mode-option {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem 1.25rem;
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    user-select: none;
+}
+
+.mode-option:hover {
+    border-color: #cbd5e1;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.mode-option i {
+    font-size: 1.5rem;
+    color: #94a3b8;
+    transition: all 0.25s ease;
+}
+
+.mode-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.mode-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mode-desc {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.mode-option.active {
+    background: linear-gradient(135deg, #eff6ff, #dbeafe);
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.15);
+}
+
+.mode-option.active i {
+    color: var(--primary-color);
+    transform: scale(1.1);
+}
+
+.mode-option.active .mode-name {
+    color: var(--primary-color);
+}
+
+.mode-option[data-mode="quick"].active {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #f59e0b;
+    box-shadow: 0 4px 16px rgba(245, 158, 11, 0.15);
+}
+
+.mode-option[data-mode="quick"].active i {
+    color: #d97706;
+}
+
+.mode-option[data-mode="quick"].active .mode-name {
+    color: #d97706;
+}
+
+@media (max-width: 640px) {
+    .mode-selector {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+}
+
 /* 文案审查视图 - 非全屏布局 */
 #review-view {
     max-width: 1000px;
@@ -1941,6 +2029,26 @@ canvas {
     background-color: #e0e7ff;
     color: #4338ca;
     font-weight: 600;
+}
+
+.mode-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.mode-badge.pro {
+    background: linear-gradient(135deg, #eff6ff, #dbeafe);
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.mode-badge.quick {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #b45309;
+    border: 1px solid #fcd34d;
 }
 
 .history-arrow {
