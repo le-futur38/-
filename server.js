@@ -24,21 +24,28 @@ app.get('/api/health', (req, res) => {
 });
 
 // 根据模式返回对应的 Dify 配置（API Key 绝不出现在前端）
+// 专业版：使用现有的 DIFY_API_URL / DIFY_API_KEY
+// 快速版：必须使用专属的 DIFY_API_URL_QUICK / DIFY_API_KEY_QUICK（无降级，确保隔离）
 function getDifyConfig(mode) {
     if (mode === 'quick') {
+        // 快速版：使用专属的 API Key（用户提供的新 Key），严禁降级到专业版 Key
+        const quickKey = process.env.DIFY_API_KEY_QUICK;
+        const quickUrl = process.env.DIFY_API_URL_QUICK || process.env.DIFY_API_URL || 'https://api.dify.ai/v1';
         return {
             mode: 'quick',
             name: '快速版',
-            url: process.env.DIFY_API_URL_QUICK || process.env.DIFY_API_URL || 'https://api.dify.ai/v1',
-            key: process.env.DIFY_API_KEY_QUICK || process.env.DIFY_API_KEY
+            url: quickUrl,
+            key: quickKey,  // 不降级！未配置就返回 undefined
+            keySource: quickKey ? 'DIFY_API_KEY_QUICK（专用）' : '未配置 DIFY_API_KEY_QUICK'
         };
     }
-    // 默认专业版
+    // 专业版：使用现有的凭证（保持向后兼容）
     return {
         mode: 'pro',
         name: '专业版',
         url: process.env.DIFY_API_URL_PRO || process.env.DIFY_API_URL || 'https://api.dify.ai/v1',
-        key: process.env.DIFY_API_KEY_PRO || process.env.DIFY_API_KEY
+        key: process.env.DIFY_API_KEY_PRO || process.env.DIFY_API_KEY,
+        keySource: process.env.DIFY_API_KEY_PRO ? 'DIFY_API_KEY_PRO' : 'DIFY_API_KEY（默认）'
     };
 }
 
@@ -52,12 +59,16 @@ app.get('/api/modes', (req, res) => {
             pro: {
                 name: proConfig.name,
                 available: !!proConfig.key,
+                keySource: proConfig.keySource,
+                keyPrefix: proConfig.key ? proConfig.key.substring(0, 10) + '...' : null,
                 description: '深度分析 · 8维度',
                 features: ['宗教/文化/政治敏感词检测', '颜色禁忌分析', '王室相关内容识别', '语言规范校验', '产品认证要求', '广告法规定', '纺织品种类专项检查']
             },
             quick: {
                 name: quickConfig.name,
                 available: !!quickConfig.key,
+                keySource: quickConfig.keySource,
+                keyPrefix: quickConfig.key ? quickConfig.key.substring(0, 10) + '...' : null,
                 description: '极速响应 · 重点扫描',
                 features: ['核心敏感词检测', '明显违规项标记', '快速合规建议']
             }
@@ -379,6 +390,8 @@ app.post('/api/analyze', async (req, res) => {
         console.log(`[${requestId}] productType:`, productType);
         console.log(`[${requestId}] 模式:`, currentMode, '(', difyConfig.name, ')');
         console.log(`[${requestId}] DIFY_API_URL:`, difyConfig.url);
+        console.log(`[${requestId}] Key 来源:`, difyConfig.keySource);
+        console.log(`[${requestId}] Key 前缀:`, difyConfig.key ? difyConfig.key.substring(0, 10) + '...' : '❌ 未配置');
         console.log(`[${requestId}] DIFY_API_KEY exists:`, !!difyConfig.key);
         
         if (!text || !country) {
