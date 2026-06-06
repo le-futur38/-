@@ -23,6 +23,40 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// 调试端点：列出所有 Dify 相关环境变量（不暴露 Key 值）
+app.get('/api/debug-env', (req, res) => {
+    const envVars = Object.keys(process.env)
+        .filter(k => k.startsWith('DIFY_'))
+        .sort();
+    
+    const details = envVars.map(name => {
+        const value = process.env[name];
+        const isKey = name.includes('KEY');
+        return {
+            name,
+            exists: !!value,
+            length: value ? value.length : 0,
+            // 只显示 Key 的前8位和后4位，中间用星号遮蔽
+            masked: isKey && value
+                ? value.substring(0, 8) + '*'.repeat(Math.max(0, value.length - 12)) + value.substring(value.length - 4)
+                : (value || null)
+        };
+    });
+    
+    res.json({
+        success: true,
+        difyEnvCount: envVars.length,
+        difyEnvVars: details,
+        quickKeyConfig: {
+            DIFY_API_KEY_QUICK_exists: !!process.env.DIFY_API_KEY_QUICK,
+            DIFY_API_KEY_QUICK_length: process.env.DIFY_API_KEY_QUICK ? process.env.DIFY_API_KEY_QUICK.length : 0,
+            DIFY_API_KEY_QUICK_masked: process.env.DIFY_API_KEY_QUICK
+                ? process.env.DIFY_API_KEY_QUICK.substring(0, 8) + '***' + process.env.DIFY_API_KEY_QUICK.substring(process.env.DIFY_API_KEY_QUICK.length - 4)
+                : null
+        }
+    });
+});
+
 // 根据模式返回对应的 Dify 配置（API Key 绝不出现在前端）
 // 专业版：使用现有的 DIFY_API_URL / DIFY_API_KEY
 // 快速版：必须使用专属的 DIFY_API_URL_QUICK / DIFY_API_KEY_QUICK（无降级，确保隔离）
