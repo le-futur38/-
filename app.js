@@ -1627,6 +1627,76 @@ function initEventListeners() {
     });
 }
 
+// 启动时遍历清理过期的本地缓存（超过30天的自动删除 + 孤儿缓存清理）
+function cleanupExpiredCache() {
+    const now = Date.now();
+    const maxAge = REPORT_CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    const validRecordIds = new Set(HISTORY_RECORDS.map(r => r.id));
+    
+    let removed = 0;
+    let freedBytes = 0;
+    let orphaned = 0;
+    
+    try {
+        // 遍历所有 localStorage key
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (!key) continue;
+            
+            // 只处理 report_cache_ 开头的缓存项
+            if (key.startsWith(REPORT_CACHE_PREFIX)) {
+                const recordId = key.substring(REPORT_CACHE_PREFIX.length);
+                
+                // 1. 检查是否孤儿缓存（历史记录列表里没有对应记录）
+                if (!validRecordIds.has(recordId)) {
+                    const size = (localStorage.getItem(key) || '').length;
+                    localStorage.removeItem(key);
+                    freedBytes += size;
+                    removed++;
+                    orphaned++;
+                    continue;
+                }
+                
+                // 2. 检查是否过期
+                try {
+                    const raw = localStorage.getItem(key);
+                    if (raw) {
+                        const cacheData = JSON.parse(raw);
+                        const age = now - (cacheData.timestamp || 0);
+                        if (age > maxAge) {
+                            const size = raw.length;
+                            localStorage.removeItem(key);
+                            freedBytes += size;
+                            removed++;
+                        }
+                    }
+                } catch (parseErr) {
+                    // 解析失败，直接删除损坏的缓存
+                    const size = (localStorage.getItem(key) || '').length;
+                    localStorage.removeItem(key);
+                    freedBytes += size;
+                    removed++;
+                }
+            }
+        }
+        
+        // 输出清理报告
+        if (removed > 0) {
+            const sizeKB = (freedBytes / 1024).toFixed(2);
+            console.log(`[本地缓存清理] 已删除 ${removed} 个过期/孤儿缓存，释放 ${sizeKB} KB`);
+            if (orphaned > 0) {
+                console.log(`[本地缓存清理] 其中 ${orphaned} 个为孤儿缓存（历史记录已删除）`);
+            }
+        } else {
+            console.log('[本地缓存清理] 缓存状态良好，无需清理');
+        }
+    } catch (e) {
+        console.warn('[本地缓存清理] 清理失败:', e.message);
+    }
+    
+    return { removed, freedBytes, orphaned };
+}
+
 // ===================================
 // 初始化
 // ===================================
@@ -1638,6 +1708,9 @@ function init() {
         HISTORY_RECORDS = savedRecords;
         console.log('[初始化] 已恢复', HISTORY_RECORDS.length, '条历史记录');
     }
+    
+    // 启动时清理过期/孤儿的本地缓存
+    cleanupExpiredCache();
     
     // 恢复上次选择的模式
     try {
