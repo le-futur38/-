@@ -1138,9 +1138,7 @@ function renderHistoryRecords() {
     
     if (!container) return;
     
-    container.innerHTML = '';
-    
-    // 空状态提示
+    // 空状态（无任何记录时，不显示筛选 UI）
     if (HISTORY_RECORDS.length === 0) {
         container.innerHTML = `
             <div class="history-empty-state">
@@ -1150,10 +1148,33 @@ function renderHistoryRecords() {
             </div>
         `;
         if (countElement) countElement.textContent = '0';
+        // 重置标志，以便下次有记录时重新创建筛选 UI 和绑定事件
+        historySearchInited = false;
         return;
     }
     
-    // ===== 顶部：搜索 + 过滤栏 =====
+    // ===== 确保筛选 UI 存在（只创建一次） =====
+    ensureFilterUI(container);
+    
+    // ===== 更新芯片的 active 状态 =====
+    updateFilterChipStates();
+    
+    // ===== 更新清空/统计栏 =====
+    updateClearBar();
+    
+    // ===== 只重渲染记录列表 =====
+    renderHistoryItems(countElement);
+}
+
+// 确保筛选 UI 存在（搜索框 + 芯片），只创建一次
+function ensureFilterUI(container) {
+    // 如果筛选 UI 已存在，跳过
+    if (document.getElementById('history-search-input')) return;
+    
+    // 清空容器（仅在首次创建时）
+    container.innerHTML = '';
+    
+    // 搜索框
     const searchBar = document.createElement('div');
     searchBar.className = 'history-search-bar';
     searchBar.innerHTML = `
@@ -1164,12 +1185,12 @@ function renderHistoryRecords() {
                    placeholder="搜索文案内容、国家、行业..." 
                    value="${escapeHtml(currentHistorySearch.keyword)}"
                    autocomplete="off">
-            ${currentHistorySearch.keyword ? '<button class="search-clear-btn" onclick="clearSearchKeyword()"><i class="fas fa-times"></i></button>' : ''}
+            ${currentHistorySearch.keyword ? '<button class="search-clear-btn" data-action="clear-search"><i class="fas fa-times"></i></button>' : ''}
         </div>
     `;
     container.appendChild(searchBar);
     
-    // ===== 过滤芯片：状态 =====
+    // 状态过滤芯片
     const statusFilterRow = document.createElement('div');
     statusFilterRow.className = 'history-filter-row';
     const statusOptions = [
@@ -1184,13 +1205,13 @@ function renderHistoryRecords() {
         chip.className = `filter-chip ${currentHistorySearch.status === opt.value ? 'active' : ''}`;
         chip.dataset.type = 'status';
         chip.dataset.value = opt.value;
+        chip.type = 'button';
         chip.innerHTML = `${opt.icon} ${opt.label}`;
-        chip.onclick = () => applyFilter('status', opt.value);
         statusFilterRow.appendChild(chip);
     });
     container.appendChild(statusFilterRow);
     
-    // ===== 过滤芯片：模式 =====
+    // 模式过滤芯片
     const modeFilterRow = document.createElement('div');
     modeFilterRow.className = 'history-filter-row';
     const modeOptions = [
@@ -1203,108 +1224,153 @@ function renderHistoryRecords() {
         chip.className = `filter-chip ${currentHistorySearch.mode === opt.value ? 'active' : ''}`;
         chip.dataset.type = 'mode';
         chip.dataset.value = opt.value;
+        chip.type = 'button';
         chip.innerHTML = `${opt.icon} ${opt.label}`;
-        chip.onclick = () => applyFilter('mode', opt.value);
         modeFilterRow.appendChild(chip);
     });
     container.appendChild(modeFilterRow);
     
-    // ===== 应用过滤逻辑 =====
+    // 清空/统计栏占位
+    const clearBar = document.createElement('div');
+    clearBar.className = 'history-clear-bar';
+    clearBar.id = 'history-clear-bar';
+    container.appendChild(clearBar);
+    
+    // 记录列表容器
+    const itemsWrapper = document.createElement('div');
+    itemsWrapper.id = 'history-items-wrapper';
+    container.appendChild(itemsWrapper);
+    
+    // 首次创建后，绑定事件
+    initHistorySearch();
+}
+
+// 更新芯片的 active 状态（不重建 DOM）
+function updateFilterChipStates() {
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+        const type = chip.dataset.type;
+        const value = chip.dataset.value;
+        if (type === 'status') {
+            chip.classList.toggle('active', currentHistorySearch.status === value);
+        } else if (type === 'mode') {
+            chip.classList.toggle('active', currentHistorySearch.mode === value);
+        }
+    });
+    
+    // 更新搜索框的清除按钮
+    const searchInput = document.getElementById('history-search-input');
+    if (searchInput) {
+        const wrapper = searchInput.closest('.search-input-wrapper');
+        if (wrapper) {
+            const existingClear = wrapper.querySelector('.search-clear-btn');
+            if (currentHistorySearch.keyword && !existingClear) {
+                const clearBtn = document.createElement('button');
+                clearBtn.className = 'search-clear-btn';
+                clearBtn.dataset.action = 'clear-search';
+                clearBtn.innerHTML = '<i class="fas fa-times"></i>';
+                wrapper.appendChild(clearBtn);
+            } else if (!currentHistorySearch.keyword && existingClear) {
+                existingClear.remove();
+            }
+        }
+    }
+}
+
+// 更新清空/统计栏
+function updateClearBar() {
+    const clearBar = document.getElementById('history-clear-bar');
+    if (!clearBar) return;
+    
     const filtered = filterHistoryRecords();
-    
-    // 顶部添加"清空记录"按钮 + 结果统计
-    const clearBtn = document.createElement('div');
-    clearBtn.className = 'history-clear-bar';
-    
     const isFiltering = currentHistorySearch.keyword || 
                         currentHistorySearch.status !== 'all' || 
                         currentHistorySearch.mode !== 'all';
     
     if (isFiltering) {
-        clearBtn.innerHTML = `
+        clearBar.innerHTML = `
             <span class="history-clear-info">
                 匹配 <strong style="color:#0ea5e9;">${filtered.length}</strong> / ${HISTORY_RECORDS.length} 条记录
             </span>
-            <button class="history-clear-btn" style="color:#0ea5e9; border-color:#7dd3fc;" onclick="resetAllFilters()">
+            <button class="history-clear-btn" data-action="reset-filters" style="color:#0ea5e9; border-color:#7dd3fc;">
                 <i class="fas fa-redo"></i> 重置筛选
             </button>
         `;
     } else {
-        clearBtn.innerHTML = `
+        clearBar.innerHTML = `
             <span class="history-clear-info">共 ${HISTORY_RECORDS.length} 条记录（已自动保存到本地）</span>
-            <button class="history-clear-btn" onclick="confirmClearHistory()">
+            <button class="history-clear-btn" data-action="clear-history">
                 <i class="fas fa-trash-alt"></i> 清空记录
             </button>
         `;
     }
-    container.appendChild(clearBtn);
+}
+
+// 只重渲染记录列表（不触碰筛选 UI）
+function renderHistoryItems(countElement) {
+    const wrapper = document.getElementById('history-items-wrapper');
+    if (!wrapper) return;
     
-    // ===== 渲染过滤后的记录 =====
+    // 清空记录列表
+    wrapper.innerHTML = '';
+    
+    const filtered = filterHistoryRecords();
+    
     if (filtered.length === 0) {
-        container.innerHTML += `
+        wrapper.innerHTML = `
             <div class="history-empty-state">
                 <i class="fas fa-search" style="font-size: 48px; color: #cbd5e1; margin-bottom: 16px;"></i>
                 <p style="color: #64748b; text-align: center; margin: 0;">没有匹配的记录</p>
                 <p style="color: #94a3b8; text-align: center; font-size: 13px; margin-top: 8px;">试试调整搜索词或筛选条件</p>
             </div>
         `;
-        if (countElement) countElement.textContent = '0';
-        // 即使没有匹配也要绑定搜索框事件（让用户能清除搜索）
-        initHistorySearch();
-        return;
-    }
-    
-    filtered.forEach(record => {
-        const item = document.createElement('div');
-        item.className = `history-item status-${record.status}`;
-        item.dataset.recordId = record.id;
-        
-        const issueText = record.issueCount > 0 ? `发现 ${record.issueCount} 个问题` : '未发现问题';
-        const productText = record.productType ? ` · ${record.productType}` : '';
-        const demoBadge = record.isDemo ? '<span class="demo-badge">演示</span>' : '';
-        const modeBadge = record.mode === 'quick' 
-            ? '<span class="mode-badge quick">⚡快速版</span>' 
-            : record.mode === 'pro' 
-            ? '<span class="mode-badge pro">👑专业版</span>' 
-            : '';
-        
-        // 状态标签
-        const statusBadge = record.status === 'safe' 
-            ? '<span class="status-badge safe">合规</span>'
-            : record.status === 'low'
-            ? '<span class="status-badge low">低风险</span>'
-            : record.status === 'medium'
-            ? '<span class="status-badge medium">中风险</span>'
-            : '<span class="status-badge high">高风险</span>';
-        
-        // 高亮匹配的关键词
-        const highlightedText = highlightKeyword(record.text, currentHistorySearch.keyword);
-        const highlightedCountry = highlightKeyword(record.countryName, currentHistorySearch.keyword);
-        const highlightedProduct = record.productType ? highlightKeyword(record.productType, currentHistorySearch.keyword) : '';
-        
-        item.innerHTML = `
-            <div class="history-content">
-                <div class="history-header">
-                    <span class="history-country">${highlightedCountry}</span>
-                    ${statusBadge}
-                    ${modeBadge}
-                    ${demoBadge}
+    } else {
+        filtered.forEach(record => {
+            const item = document.createElement('div');
+            item.className = `history-item status-${record.status}`;
+            item.dataset.recordId = record.id;
+            
+            const issueText = record.issueCount > 0 ? `发现 ${record.issueCount} 个问题` : '未发现问题';
+            const productText = record.productType ? ` · ${record.productType}` : '';
+            const demoBadge = record.isDemo ? '<span class="demo-badge">演示</span>' : '';
+            const modeBadge = record.mode === 'quick' 
+                ? '<span class="mode-badge quick">⚡快速版</span>' 
+                : record.mode === 'pro' 
+                ? '<span class="mode-badge pro">👑专业版</span>' 
+                : '';
+            
+            const statusBadge = record.status === 'safe' 
+                ? '<span class="status-badge safe">合规</span>'
+                : record.status === 'low'
+                ? '<span class="status-badge low">低风险</span>'
+                : record.status === 'medium'
+                ? '<span class="status-badge medium">中风险</span>'
+                : '<span class="status-badge high">高风险</span>';
+            
+            const highlightedText = highlightKeyword(record.text, currentHistorySearch.keyword);
+            const highlightedCountry = highlightKeyword(record.countryName, currentHistorySearch.keyword);
+            const highlightedProduct = record.productType ? highlightKeyword(record.productType, currentHistorySearch.keyword) : '';
+            
+            item.innerHTML = `
+                <div class="history-content">
+                    <div class="history-header">
+                        <span class="history-country">${highlightedCountry}</span>
+                        ${statusBadge}
+                        ${modeBadge}
+                        ${demoBadge}
+                    </div>
+                    <p class="history-text">${highlightedText}</p>
+                    <p class="history-meta">${record.date}${highlightedProduct ? ` · ${highlightedProduct}` : (productText ? ` ·${productText}` : '')} · ${issueText}</p>
                 </div>
-                <p class="history-text">${highlightedText}</p>
-                <p class="history-meta">${record.date}${highlightedProduct ? ` · ${highlightedProduct}` : (productText ? ` ·${productText}` : '')} · ${issueText}</p>
-            </div>
-            <i class="fas fa-chevron-right history-arrow"></i>
-        `;
-        
-        container.appendChild(item);
-    });
+                <i class="fas fa-chevron-right history-arrow"></i>
+            `;
+            
+            wrapper.appendChild(item);
+        });
+    }
     
     if (countElement) {
         countElement.textContent = filtered.length;
     }
-    
-    // 重新绑定搜索框事件（因为每次重渲染都会创建新 input）
-    initHistorySearch();
 }
 
 // ==================== 历史记录搜索/筛选 ====================
@@ -1316,25 +1382,66 @@ let currentHistorySearch = {
     mode: 'all'
 };
 
-// 初始化搜索事件监听
+// 事件委托是否已绑定
+let historySearchInited = false;
+
+// 初始化搜索事件监听（使用事件委托，只绑定一次）
 function initHistorySearch() {
+    const container = document.getElementById('review-history');
+    if (!container) return;
+    
+    // 防止重复绑定
+    if (historySearchInited) return;
+    historySearchInited = true;
+    
+    // 1. 容器级别点击事件委托（处理 chip、清空、重置）
+    container.addEventListener('click', (e) => {
+        // 1.1 点击过滤芯片
+        const chip = e.target.closest('.filter-chip');
+        if (chip) {
+            const type = chip.dataset.type;
+            const value = chip.dataset.value;
+            if (type && value) {
+                applyFilter(type, value);
+            }
+            return;
+        }
+        
+        // 1.2 点击清除搜索按钮
+        if (e.target.closest('[data-action="clear-search"]')) {
+            currentHistorySearch.keyword = '';
+            const searchInput = document.getElementById('history-search-input');
+            if (searchInput) searchInput.value = '';
+            updateFilterChipStates();
+            updateClearBar();
+            renderHistoryItems(document.getElementById('history-count'));
+            if (searchInput) searchInput.focus();
+            return;
+        }
+        
+        // 1.3 点击重置筛选
+        if (e.target.closest('[data-action="reset-filters"]')) {
+            resetAllFilters();
+            return;
+        }
+        
+        // 1.4 点击清空记录
+        if (e.target.closest('[data-action="clear-history"]')) {
+            confirmClearHistory();
+            return;
+        }
+    });
+    
+    // 2. 绑定搜索框 input 事件（input 元素不会被重建，只需绑定一次）
     const input = document.getElementById('history-search-input');
     if (input) {
-        // 实时搜索（输入即过滤）
         input.addEventListener('input', debounce((e) => {
             currentHistorySearch.keyword = e.target.value.trim();
-            renderHistoryRecords();
-            // 重新聚焦
-            const newInput = document.getElementById('history-search-input');
-            if (newInput) {
-                newInput.focus();
-                // 把光标移到末尾
-                const len = newInput.value.length;
-                newInput.setSelectionRange(len, len);
-            }
+            updateFilterChipStates();
+            updateClearBar();
+            renderHistoryItems(document.getElementById('history-count'));
         }, 200));
         
-        // 回车键不刷新页面
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') e.preventDefault();
         });
@@ -1350,22 +1457,32 @@ function debounce(fn, delay) {
     };
 }
 
-// 应用筛选（更新状态并重渲染）
+// 应用筛选（更新状态，只更新芯片样式和记录列表，不重建筛选 UI）
 function applyFilter(type, value) {
     currentHistorySearch[type] = value;
-    renderHistoryRecords();
+    updateFilterChipStates();
+    updateClearBar();
+    renderHistoryItems(document.getElementById('history-count'));
 }
 
 // 重置所有筛选
 function resetAllFilters() {
     currentHistorySearch = { keyword: '', status: 'all', mode: 'all' };
-    renderHistoryRecords();
+    const searchInput = document.getElementById('history-search-input');
+    if (searchInput) searchInput.value = '';
+    updateFilterChipStates();
+    updateClearBar();
+    renderHistoryItems(document.getElementById('history-count'));
 }
 
 // 清除搜索关键词
 function clearSearchKeyword() {
     currentHistorySearch.keyword = '';
-    renderHistoryRecords();
+    const searchInput = document.getElementById('history-search-input');
+    if (searchInput) searchInput.value = '';
+    updateFilterChipStates();
+    updateClearBar();
+    renderHistoryItems(document.getElementById('history-count'));
 }
 
 // 过滤历史记录
