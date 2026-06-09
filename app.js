@@ -1153,18 +1153,108 @@ function renderHistoryRecords() {
         return;
     }
     
-    // 顶部添加"清空记录"按钮
+    // ===== 顶部：搜索 + 过滤栏 =====
+    const searchBar = document.createElement('div');
+    searchBar.className = 'history-search-bar';
+    searchBar.innerHTML = `
+        <div class="search-input-wrapper">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="history-search-input" 
+                   class="search-input" 
+                   placeholder="搜索文案内容、国家、行业..." 
+                   value="${escapeHtml(currentHistorySearch.keyword)}"
+                   autocomplete="off">
+            ${currentHistorySearch.keyword ? '<button class="search-clear-btn" onclick="clearSearchKeyword()"><i class="fas fa-times"></i></button>' : ''}
+        </div>
+    `;
+    container.appendChild(searchBar);
+    
+    // ===== 过滤芯片：状态 =====
+    const statusFilterRow = document.createElement('div');
+    statusFilterRow.className = 'history-filter-row';
+    const statusOptions = [
+        { value: 'all', label: '全部', icon: '' },
+        { value: 'high', label: '高风险', icon: '🔴' },
+        { value: 'medium', label: '中风险', icon: '🟡' },
+        { value: 'low', label: '低风险', icon: '🟢' },
+        { value: 'safe', label: '合规', icon: '✅' }
+    ];
+    statusOptions.forEach(opt => {
+        const chip = document.createElement('button');
+        chip.className = `filter-chip ${currentHistorySearch.status === opt.value ? 'active' : ''}`;
+        chip.dataset.type = 'status';
+        chip.dataset.value = opt.value;
+        chip.innerHTML = `${opt.icon} ${opt.label}`;
+        chip.onclick = () => applyFilter('status', opt.value);
+        statusFilterRow.appendChild(chip);
+    });
+    container.appendChild(statusFilterRow);
+    
+    // ===== 过滤芯片：模式 =====
+    const modeFilterRow = document.createElement('div');
+    modeFilterRow.className = 'history-filter-row';
+    const modeOptions = [
+        { value: 'all', label: '全部模式', icon: '' },
+        { value: 'pro', label: '专业版', icon: '👑' },
+        { value: 'quick', label: '快速版', icon: '⚡' }
+    ];
+    modeOptions.forEach(opt => {
+        const chip = document.createElement('button');
+        chip.className = `filter-chip ${currentHistorySearch.mode === opt.value ? 'active' : ''}`;
+        chip.dataset.type = 'mode';
+        chip.dataset.value = opt.value;
+        chip.innerHTML = `${opt.icon} ${opt.label}`;
+        chip.onclick = () => applyFilter('mode', opt.value);
+        modeFilterRow.appendChild(chip);
+    });
+    container.appendChild(modeFilterRow);
+    
+    // ===== 应用过滤逻辑 =====
+    const filtered = filterHistoryRecords();
+    
+    // 顶部添加"清空记录"按钮 + 结果统计
     const clearBtn = document.createElement('div');
     clearBtn.className = 'history-clear-bar';
-    clearBtn.innerHTML = `
-        <span class="history-clear-info">共 ${HISTORY_RECORDS.length} 条记录（已自动保存到本地）</span>
-        <button class="history-clear-btn" onclick="confirmClearHistory()">
-            <i class="fas fa-trash-alt"></i> 清空记录
-        </button>
-    `;
+    
+    const isFiltering = currentHistorySearch.keyword || 
+                        currentHistorySearch.status !== 'all' || 
+                        currentHistorySearch.mode !== 'all';
+    
+    if (isFiltering) {
+        clearBtn.innerHTML = `
+            <span class="history-clear-info">
+                匹配 <strong style="color:#0ea5e9;">${filtered.length}</strong> / ${HISTORY_RECORDS.length} 条记录
+            </span>
+            <button class="history-clear-btn" style="color:#0ea5e9; border-color:#7dd3fc;" onclick="resetAllFilters()">
+                <i class="fas fa-redo"></i> 重置筛选
+            </button>
+        `;
+    } else {
+        clearBtn.innerHTML = `
+            <span class="history-clear-info">共 ${HISTORY_RECORDS.length} 条记录（已自动保存到本地）</span>
+            <button class="history-clear-btn" onclick="confirmClearHistory()">
+                <i class="fas fa-trash-alt"></i> 清空记录
+            </button>
+        `;
+    }
     container.appendChild(clearBtn);
     
-    HISTORY_RECORDS.forEach(record => {
+    // ===== 渲染过滤后的记录 =====
+    if (filtered.length === 0) {
+        container.innerHTML += `
+            <div class="history-empty-state">
+                <i class="fas fa-search" style="font-size: 48px; color: #cbd5e1; margin-bottom: 16px;"></i>
+                <p style="color: #64748b; text-align: center; margin: 0;">没有匹配的记录</p>
+                <p style="color: #94a3b8; text-align: center; font-size: 13px; margin-top: 8px;">试试调整搜索词或筛选条件</p>
+            </div>
+        `;
+        if (countElement) countElement.textContent = '0';
+        // 即使没有匹配也要绑定搜索框事件（让用户能清除搜索）
+        initHistorySearch();
+        return;
+    }
+    
+    filtered.forEach(record => {
         const item = document.createElement('div');
         item.className = `history-item status-${record.status}`;
         item.dataset.recordId = record.id;
@@ -1187,16 +1277,21 @@ function renderHistoryRecords() {
             ? '<span class="status-badge medium">中风险</span>'
             : '<span class="status-badge high">高风险</span>';
         
+        // 高亮匹配的关键词
+        const highlightedText = highlightKeyword(record.text, currentHistorySearch.keyword);
+        const highlightedCountry = highlightKeyword(record.countryName, currentHistorySearch.keyword);
+        const highlightedProduct = record.productType ? highlightKeyword(record.productType, currentHistorySearch.keyword) : '';
+        
         item.innerHTML = `
             <div class="history-content">
                 <div class="history-header">
-                    <span class="history-country">${record.countryName}</span>
+                    <span class="history-country">${highlightedCountry}</span>
                     ${statusBadge}
                     ${modeBadge}
                     ${demoBadge}
                 </div>
-                <p class="history-text">${escapeHtml(record.text)}</p>
-                <p class="history-meta">${record.date}${productText} · ${issueText}</p>
+                <p class="history-text">${highlightedText}</p>
+                <p class="history-meta">${record.date}${highlightedProduct ? ` · ${highlightedProduct}` : (productText ? ` ·${productText}` : '')} · ${issueText}</p>
             </div>
             <i class="fas fa-chevron-right history-arrow"></i>
         `;
@@ -1205,8 +1300,112 @@ function renderHistoryRecords() {
     });
     
     if (countElement) {
-        countElement.textContent = HISTORY_RECORDS.length;
+        countElement.textContent = filtered.length;
     }
+    
+    // 重新绑定搜索框事件（因为每次重渲染都会创建新 input）
+    initHistorySearch();
+}
+
+// ==================== 历史记录搜索/筛选 ====================
+
+// 当前搜索状态（模块级）
+let currentHistorySearch = {
+    keyword: '',
+    status: 'all',
+    mode: 'all'
+};
+
+// 初始化搜索事件监听
+function initHistorySearch() {
+    const input = document.getElementById('history-search-input');
+    if (input) {
+        // 实时搜索（输入即过滤）
+        input.addEventListener('input', debounce((e) => {
+            currentHistorySearch.keyword = e.target.value.trim();
+            renderHistoryRecords();
+            // 重新聚焦
+            const newInput = document.getElementById('history-search-input');
+            if (newInput) {
+                newInput.focus();
+                // 把光标移到末尾
+                const len = newInput.value.length;
+                newInput.setSelectionRange(len, len);
+            }
+        }, 200));
+        
+        // 回车键不刷新页面
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') e.preventDefault();
+        });
+    }
+}
+
+// 防抖函数（避免输入时频繁重渲染）
+function debounce(fn, delay) {
+    let timer = null;
+    return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+}
+
+// 应用筛选（更新状态并重渲染）
+function applyFilter(type, value) {
+    currentHistorySearch[type] = value;
+    renderHistoryRecords();
+}
+
+// 重置所有筛选
+function resetAllFilters() {
+    currentHistorySearch = { keyword: '', status: 'all', mode: 'all' };
+    renderHistoryRecords();
+}
+
+// 清除搜索关键词
+function clearSearchKeyword() {
+    currentHistorySearch.keyword = '';
+    renderHistoryRecords();
+}
+
+// 过滤历史记录
+function filterHistoryRecords() {
+    const { keyword, status, mode } = currentHistorySearch;
+    const kw = keyword.toLowerCase();
+    
+    return HISTORY_RECORDS.filter(record => {
+        // 1. 关键词匹配（文案内容、国家、行业）
+        if (kw) {
+            const matchText = (record.text || '').toLowerCase().includes(kw);
+            const matchCountry = (record.countryName || '').toLowerCase().includes(kw);
+            const matchProduct = (record.productType || '').toLowerCase().includes(kw);
+            const matchMode = (record.modeName || '').toLowerCase().includes(kw);
+            if (!matchText && !matchCountry && !matchProduct && !matchMode) {
+                return false;
+            }
+        }
+        
+        // 2. 状态筛选
+        if (status !== 'all' && record.status !== status) {
+            return false;
+        }
+        
+        // 3. 模式筛选
+        if (mode !== 'all' && record.mode !== mode) {
+            return false;
+        }
+        
+        return true;
+    });
+}
+
+// 高亮匹配关键词
+function highlightKeyword(text, keyword) {
+    if (!text || !keyword) return escapeHtml(text || '');
+    const safeText = escapeHtml(text);
+    const safeKeyword = escapeHtml(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // 转义正则
+    const regex = new RegExp(`(${safeKeyword})`, 'gi');
+    return safeText.replace(regex, '<mark class="search-highlight">$1</mark>');
 }
 
 // 保存审查报告到历史记录
